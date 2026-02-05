@@ -13,7 +13,7 @@ try:
 except ImportError:
     BLOCO_FIXO_FINAL = ""
 
-# 2. CONFIGURAÇÕES
+# 2. CONFIGURAÇÕES (Usando a chave MD Emagreca ...tRBY)
 BLOG_ID = "5251820458826857223"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
@@ -25,14 +25,12 @@ def renovar_token():
         info = json.load(f)
     creds = Credentials.from_authorized_user_info(info, ["https://www.googleapis.com/auth/blogger"])
     if creds.expired and creds.refresh_token:
-        print("🔄 Renovando acesso ao Blogger...")
         creds.refresh(Request())
         with open("token.json", "w") as f:
             f.write(creds.to_json())
     return creds
 
 def buscar_fotos(tema, quantidade=2):
-    """Busca imagens no Pexels para o tema."""
     url = f"https://api.pexels.com/v1/search?query={tema}&orientation=landscape&per_page={quantidade}"
     headers = {"Authorization": PEXELS_API_KEY}
     fotos = []
@@ -51,63 +49,64 @@ def executar():
         temas = [l.strip() for l in f.readlines() if l.strip()]
     
     tema = random.choice(temas)
-    print(f"🚀 Postagem Editorial para: {tema}")
+    print(f"🚀 Postagem Refinada: {tema}")
 
-    # 3. GERAÇÃO DE CONTEÚDO (Prompt com diretrizes editoriais e sem '#' )
+    # 3. GERAÇÃO DE CONTEÚDO (Prompt focado em estrutura limpa)
     try:
         prompt_editorial = (
-            f"Escreva um artigo original de 800 palavras sobre {tema} para o blog 'Emagrecer com Saúde'.\n"
-            "PERFIL EDITORIAL: Educativo, linguagem acessível, orientação prática, sem promessas milagrosas e sem plágio.\n"
-            "REGRAS DE FORMATAÇÃO:\n"
-            "1. NÃO use o símbolo '#' para títulos ou listas. Use apenas numeração (1., 2., etc).\n"
-            "2. Divida o texto em duas partes de aproximadamente 400 palavras cada.\n"
-            "3. O texto deve começar direto no título.\n"
-            "4. NÃO inclua saudações ou comentários sobre a IA."
+            f"Escreva um artigo de 800 palavras sobre {tema} para o blog 'Emagrecer com Saúde'.\n"
+            "ESTRUTURA: Use APENAS texto simples. Use 'SUBTITULO:' antes de cada subtítulo.\n"
+            "REGRAS: Sem símbolos '#', sem introduções da IA, comece direto no título."
         )
         
         response = client.models.generate_content(
             model="gemini-3-flash-preview", 
             contents=prompt_editorial
         )
-        texto_gerado = response.text
+        texto_raw = response.text
     except Exception as e:
         print(f"Erro na IA: {e}")
         return
 
-    # Processamento para dividir o texto e inserir a segunda imagem
-    paragrafos = texto_gerado.split('\n\n')
-    meio = len(paragrafos) // 2
+    # 4. MONTAGEM DO HTML COM ESTILOS RÍGIDOS (#003366)
+    cor_base = "#003366"
     fotos = buscar_fotos(tema)
     
-    # 4. MONTAGEM DO HTML (Cores RGB 7, 55, 99 e Tamanhos de Fonte)
-    estilo_cor = "color: rgb(7, 55, 99);"
+    # Tratamento de parágrafos para reduzir o espaçamento (margin: 8px)
+    linhas = texto_raw.split('\n')
+    corpo_html = ""
     
-    html_corpo_1 = "<br/>".join(paragrafos[:meio]).replace('\n', '<br/>')
-    html_corpo_2 = "<br/>".join(paragrafos[meio:]).replace('\n', '<br/>')
+    for linha in linhas:
+        linha = linha.strip()
+        if not linha: continue
+        
+        if "SUBTITULO:" in linha or linha.isupper():
+            titulo_limpo = linha.replace("SUBTITULO:", "").strip()
+            corpo_html += f"<p style='color:{cor_base}; font-size:large; font-weight:bold; text-align:left; margin-top:20px; margin-bottom:5px;'>{titulo_limpo}</p>"
+        else:
+            corpo_html += f"<p style='color:{cor_base}; font-size:medium; text-align:justify; margin: 8px 0;'>{linha}</p>"
+
+    # Inserção da segunda imagem no meio
+    paragrafos_lista = corpo_html.split('</p>')
+    meio = len(paragrafos_lista) // 2
+    parte_1 = "</p>".join(paragrafos_lista[:meio]) + "</p>"
+    parte_2 = "</p>".join(paragrafos_lista[meio:])
+    
+    imagem_meio = f"<div style='text-align:center; margin:20px 0;'><img src='{fotos[1]}' style='width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:10px;'/></div>"
 
     html_final = f"""
-    <div style='font-family:Arial; {estilo_cor} text-align:justify; font-size: medium;'>
-        <h1 style='text-align:center; font-size: x-large; font-weight: bold;'>{tema.upper()}</h1>
-        
-        <div style='text-align:center; margin: 20px 0;'>
+    <div style='font-family:Arial;'>
+        <h1 style='color:{cor_base}; text-align:center; font-size:x-large; font-weight:bold;'>{tema.upper()}</h1>
+        <div style='text-align:center; margin-bottom:20px;'>
             <img src='{fotos[0]}' style='width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:10px;'/>
         </div>
-
-        {html_corpo_1}
-
-        <div style='text-align:center; margin: 30px 0;'>
-            <img src='{fotos[1]}' style='width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:10px;'/>
-        </div>
-
-        {html_corpo_2}
-        
-        <br/><br/>
-        {BLOCO_FIXO_FINAL}
+        {parte_1}
+        {imagem_meio}
+        {parte_2}
+        <br/>
+        <div style='color:{cor_base};'>{BLOCO_FIXO_FINAL}</div>
     </div>
     """
-    
-    # Ajuste de estilo para Subtítulos (Simulando <h2> via replace para aplicar seu estilo)
-    html_final = html_final.replace("<h2>", f"<h2 style='text-align: left; font-size: large; font-weight: bold; {estilo_cor}'>")
 
     # 5. PUBLICAÇÃO
     try:
@@ -115,9 +114,9 @@ def executar():
         service = build("blogger", "v3", credentials=creds)
         service.posts().insert(
             blogId=BLOG_ID, 
-            body={{"title": tema.title(), "content": html_final, "status": "LIVE"}}
+            body={"title": tema.title(), "content": html_final, "status": "LIVE"}
         ).execute()
-        print(f"✅ SUCESSO! Postagem '{tema}' publicada no novo padrão visual.")
+        print(f"✅ SUCESSO! Postagem '{tema}' publicada com cores e fontes corrigidas.")
     except Exception as e:
         print(f"❌ Erro ao publicar: {e}")
 
