@@ -29,5 +29,9 @@ jobs:
       - name: Rodar Bot Emagrecer com Saúde
         env:
           # É fundamental que o nome aqui seja exatamente igual ao do código Python
+          - name: Rodar Bot Emagrecer com Saúde
+        env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }} # Adicione esta linha
+          
         run: python run_bot.py
