@@ -24,11 +24,13 @@ jobs:
         run: |
           pip install feedparser
           pip install google-auth google-api-python-client google-auth-oauthlib
-          pip install google-generativeai
+          pip install google-genai # Mudança aqui
 
       - name: Rodar Bot Emagrecer com Saúde
         env:
           # Se você mudou o nome da variável no script Python, mude aqui também
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python run_bot.py
+
+
 
