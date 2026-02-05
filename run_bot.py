@@ -2,7 +2,7 @@ import os
 import random
 import requests
 import json
-from google import genai # Nova biblioteca do manual
+from google import genai
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
@@ -18,8 +18,11 @@ BLOG_ID = "5251820458826857223"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
 
-# Inicialização conforme o manual (pega a chave do ambiente automaticamente)
-client = genai.Client(api_key=GEMINI_API_KEY)
+# INICIALIZAÇÃO: Forçamos a 'v1' para evitar o erro 404 da 'v1beta'
+client = genai.Client(
+    api_key=GEMINI_API_KEY,
+    http_options={'api_version': 'v1'}
+)
 
 def renovar_token():
     with open("token.json", "r") as f:
@@ -48,11 +51,11 @@ def executar():
         temas = [l.strip() for l in f.readlines() if l.strip()]
     
     tema = random.choice(temas)
-    print(f"🚀 Iniciando postagem sobre: {tema}")
+    print(f"🚀 Tentativa final para: {tema}")
 
-    # 3. GERAÇÃO DE CONTEÚDO (Seguindo o exemplo do seu manual)
+    # 3. GERAÇÃO DE CONTEÚDO
     try:
-        # Usamos 'gemini-1.5-flash' que é o modelo estável atual
+        # Usamos o modelo indicado no seu manual (gemini-2.0-flash) ou o estável 1.5
         response = client.models.generate_content(
             model="gemini-1.5-flash", 
             contents=f"Escreva um artigo de 700 palavras sobre {tema} para o blog Emagrecer com Saúde. Use tom motivador, fonte Arial e subtítulos H2."
@@ -86,7 +89,7 @@ def executar():
             blogId=BLOG_ID, 
             body={"title": tema.title(), "content": html_final, "status": "LIVE"}
         ).execute()
-        print(f"✅ SUCESSO! Artigo '{tema}' publicado no novo padrão.")
+        print(f"✅ SUCESSO! Artigo '{tema}' publicado no Blogger.")
     except Exception as e:
         print(f"❌ Erro ao publicar: {e}")
 
