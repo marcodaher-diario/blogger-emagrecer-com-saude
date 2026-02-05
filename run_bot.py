@@ -7,13 +7,14 @@ from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
-# 1. PRESERVADO: Sua assinatura oficial
+# Importando sua Identidade Visual e Assinatura
+from template_blog import obter_esqueleto_html
 try:
     from configuracoes import BLOCO_FIXO_FINAL
 except ImportError:
     BLOCO_FIXO_FINAL = ""
 
-# 2. CONFIGURAÇÕES
+# CONFIGURAÇÕES
 BLOG_ID = "5251820458826857223"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
@@ -31,7 +32,6 @@ def renovar_token():
     return creds
 
 def buscar_fotos_aleatorias(tema, quantidade=2):
-    """Busca um pool de 15 fotos e sorteia 2 para evitar repetição."""
     url = f"https://api.pexels.com/v1/search?query={tema}&orientation=landscape&per_page=15"
     headers = {"Authorization": PEXELS_API_KEY}
     pool_fotos = []
@@ -41,11 +41,8 @@ def buscar_fotos_aleatorias(tema, quantidade=2):
             pool_fotos.append(foto['src']['large2x'])
     except:
         pass
-    
-    # Se a busca funcionar, sorteia da lista. Se não, usa o backup.
     if len(pool_fotos) >= quantidade:
         return random.sample(pool_fotos, quantidade)
-    
     return ["https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg"] * quantidade
 
 def executar():
@@ -53,53 +50,50 @@ def executar():
         temas = [l.strip() for l in f.readlines() if l.strip()]
     
     tema = random.choice(temas)
-    print(f"🚀 Agendamento Confirmado: Postagem sobre {tema}")
+    print(f"🚀 Gerando Conteúdo Modular para: {tema}")
+
+    # PROMPT MODULAR (Pede JSON para encaixar no template)
+    prompt_json = (
+        f"Aja como um redator especialista. Escreva sobre {tema} para o blog Emagrecer com Saúde.\n"
+        "Responda EXCLUSIVAMENTE em formato JSON com estas chaves:\n"
+        "'intro', 'sub1', 'texto1', 'sub2', 'texto2', 'sub3', 'texto3', 'texto_conclusao'.\n"
+        "Não use Markdown, não use '#', use tom educativo e profissional."
+    )
 
     try:
-        prompt_editorial = (
-            f"Escreva um artigo de 800 palavras sobre {tema} para o blog 'Emagrecer com Saúde'.\n"
-            "ESTRUTURA: Use a palavra 'SUBTÍTULO:' no início de cada subtítulo.\n"
-            "REGRAS: Sem símbolos '#', sem introduções, comece direto no título."
-        )
-        
         response = client.models.generate_content(
             model="gemini-3-flash-preview", 
-            contents=prompt_editorial
+            contents=prompt_json,
+            config={'response_mime_type': 'application/json'} # Força a IA a mandar JSON puro
         )
-        texto_raw = response.text
+        conteudo = json.loads(response.text)
     except Exception as e:
-        print(f"Erro na IA: {e}")
+        print(f"Erro na geração/leitura do JSON: {e}")
         return
 
-    # 4. MONTAGEM DO HTML (#003366)
-    cor_base = "#003366"
-    fotos = buscar_fotos_aleatorias(tema) # Agora com sorteio de pool
-    
-    linhas = [l.strip() for l in texto_raw.split('\n') if l.strip()]
-    paragrafos_html = []
-    
-    for linha in linhas:
-        if "SUBTÍTULO:" in linha.upper() or (len(linha) < 60 and linha.isupper()):
-            texto_limpo = linha.replace("SUBTÍTULO:", "").replace("Subtítulo:", "").strip()
-            paragrafos_html.append(f"<p style='color:{cor_base}; font-size:large; font-weight:bold; text-align:left; margin:25px 0 5px 0;'>{texto_limpo}</p>")
-        else:
-            paragrafos_html.append(f"<p style='color:{cor_base}; font-size:medium; text-align:justify; margin:10px 0;'>{linha}</p>")
+    # Busca as imagens para o esqueleto
+    fotos = buscar_fotos_aleatorias(tema)
 
-    meio = len(paragrafos_html) // 2
-    imagem_1 = f"<div style='text-align:center; margin-bottom:20px;'><img src='{fotos[0]}' style='width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:10px;'/></div>"
-    imagem_2 = f"<div style='text-align:center; margin:30px 0;'><img src='{fotos[1]}' style='width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:10px;'/></div>"
+    # Prepara os dados para o template
+    dados_post = {
+        'titulo': tema,
+        'img_topo': fotos[0],
+        'img_meio': fotos[1],
+        'intro': conteudo['intro'],
+        'sub1': conteudo['sub1'],
+        'texto1': conteudo['texto1'],
+        'sub2': conteudo['sub2'],
+        'texto2': conteudo['texto2'],
+        'sub3': conteudo['sub3'],
+        'texto3': conteudo['texto3'],
+        'texto_conclusao': conteudo['texto_conclusao'],
+        'assinatura': BLOCO_FIXO_FINAL
+    }
 
-    html_final = f"""
-    <div style='font-family:Arial; color:{cor_base};'>
-        <h1 style='text-align:center; font-size:x-large; font-weight:bold; margin-bottom:20px;'>{tema.upper()}</h1>
-        {imagem_1}
-        {"".join(paragrafos_html[:meio])}
-        {imagem_2}
-        {"".join(paragrafos_html[meio:])}
-        <div style='margin-top:20px;'>{BLOCO_FIXO_FINAL}</div>
-    </div>
-    """
+    # "Veste" o esqueleto HTML
+    html_final = obter_esqueleto_html(dados_post)
 
+    # PUBLICAÇÃO
     try:
         creds = renovar_token()
         service = build("blogger", "v3", credentials=creds)
@@ -107,7 +101,7 @@ def executar():
             blogId=BLOG_ID, 
             body={"title": tema.title(), "content": html_final, "status": "LIVE"}
         ).execute()
-        print(f"✅ SUCESSO! Post agendado para a próxima segunda.")
+        print(f"✅ SUCESSO! Postagem '{tema}' publicada via Template MD.")
     except Exception as e:
         print(f"❌ Erro ao publicar: {e}")
 
