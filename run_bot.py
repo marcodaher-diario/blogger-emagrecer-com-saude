@@ -2,23 +2,21 @@ import os
 import random
 import requests
 import json
-import google.generativeai as genai # Voltando para a estável que funciona no seu outro blog
+import google.generativeai as genai
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
-# Importa sua assinatura oficial
+# Assinatura oficial
 try:
     from configuracoes import BLOCO_FIXO_FINAL
 except:
     BLOCO_FIXO_FINAL = ""
 
-# CONFIGURAÇÕES
 BLOG_ID = "5251820458826857223"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
 
-# INICIALIZAÇÃO ESTÁVEL (Igual ao seu projeto que funciona)
 genai.configure(api_key=GEMINI_API_KEY)
 
 def renovar_token():
@@ -47,17 +45,17 @@ def executar():
         temas = [l.strip() for l in f.readlines() if l.strip()]
     
     tema = random.choice(temas)
-    print(f"🤖 Preparando postagem sobre: {tema}")
+    print(f"🤖 Tentando postar sobre: {tema}")
 
-    # GERAÇÃO COM A ESTRUTURA QUE FUNCIONA NO DIÁRIO DE NOTÍCIAS
+    # MUDANÇA PARA GEMINI-PRO (Mais estável contra erro 404)
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-pro') 
         response = model.generate_content(
             f"Escreva um artigo de 700 palavras sobre {tema} para o blog Emagrecer com Saúde. Use Arial e subtítulos H2."
         )
         texto_corpo = response.text.replace('\n', '<br/>')
     except Exception as e:
-        print(f"Erro na IA: {e}")
+        print(f"Erro no Gemini-Pro: {e}")
         return
 
     img = buscar_foto(tema)
@@ -67,9 +65,9 @@ def executar():
         creds = renovar_token()
         service = build("blogger", "v3", credentials=creds)
         service.posts().insert(blogId=BLOG_ID, body={"title": tema.title(), "content": html_final, "status": "LIVE"}).execute()
-        print(f"✅ SUCESSO! Artigo sobre '{tema}' publicado.")
+        print(f"✅ FINALMENTE! Artigo sobre '{tema}' publicado.")
     except Exception as e:
-        print(f"❌ Erro ao publicar: {e}")
+        print(f"❌ Erro no Blogger: {e}")
 
 if __name__ == "__main__":
     executar()
