@@ -2,7 +2,7 @@ name: Bot Emagrecer com Saúde
 on:
   schedule:
     - cron: '0 12 * * 1' # Roda toda segunda-feira às 12:00 UTC
-  workflow_dispatch:
+  workflow_dispatch: # Permite que você rode o bot manualmente para testar
 
 jobs:
   executar:
@@ -15,7 +15,7 @@ jobs:
       - name: Configurar Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11' # Atualizado para uma versão mais recente e estável
 
       - name: Atualizar pip
         run: python -m pip install --upgrade pip
@@ -24,13 +24,10 @@ jobs:
         run: |
           pip install feedparser
           pip install google-auth google-api-python-client google-auth-oauthlib
-          pip install google-genai # Mudança aqui
+          pip install google-genai
 
       - name: Rodar Bot Emagrecer com Saúde
         env:
-          # Se você mudou o nome da variável no script Python, mude aqui também
+          # É fundamental que o nome aqui seja exatamente igual ao do código Python
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python run_bot.py
-
-
-
