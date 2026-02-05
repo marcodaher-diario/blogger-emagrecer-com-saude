@@ -15,23 +15,18 @@ jobs:
       - name: Configurar Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11' # Atualizado para uma versão mais recente e estável
+          python-version: '3.11'
 
       - name: Atualizar pip
         run: python -m pip install --upgrade pip
 
       - name: Instalar Dependências
         run: |
-          pip install feedparser
           pip install google-auth google-api-python-client google-auth-oauthlib
-          pip install google-genai
+          pip install google-genai requests
 
       - name: Rodar Bot Emagrecer com Saúde
         env:
-          # É fundamental que o nome aqui seja exatamente igual ao do código Python
-          - name: Rodar Bot Emagrecer com Saúde
-        env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }} # Adicione esta linha
-          
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         run: python run_bot.py
