@@ -1,7 +1,7 @@
 name: Bot Emagrecer com Saúde
 on:
   schedule:
-    - cron: '0 12 * * 1'
+    - cron: '0 12 * * 1' # Roda toda segunda-feira às 12:00 UTC
   workflow_dispatch:
 
 jobs:
@@ -24,9 +24,10 @@ jobs:
         run: |
           pip install feedparser
           pip install google-auth google-api-python-client google-auth-oauthlib
-          pip install openai
+          pip install google-generativeai
 
       - name: Rodar Bot Emagrecer com Saúde
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # Se você mudou o nome da variável no script Python, mude aqui também
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python run_bot.py
