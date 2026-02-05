@@ -1,203 +1,97 @@
-# =============================================================
-# RUN_BOT.PY — BLOGGER BOT (EMAGRECER COM SAÚDE)
-# VERSÃO ATUALIZADA 2026 - GEMINI API
-# =============================================================
-
 import os
-import feedparser
-import re
-import time
-from datetime import datetime, timedelta
-
-# Importação da nova biblioteca do Google
-try:
-    from google import genai
-except ImportError:
-    print("ERRO: A biblioteca 'google-genai' não está instalada.")
-
+import random
+import requests
+from google import genai
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-# =============================
-# CONFIGURAÇÕES GERAIS
-# =============================
-
+# CONFIGURAÇÕES
 BLOG_ID = "5251820458826857223"
 SCOPES = ["https://www.googleapis.com/auth/blogger"]
-
-# BUSCA A CHAVE QUE VOCÊ CADASTROU NO GITHUB SECRETS
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
 
-# Inicializa o cliente do Gemini
-client_gemini = None
-if GEMINI_API_KEY:
-    client_gemini = genai.Client(api_key=GEMINI_API_KEY)
-else:
-    print("AVISO: Variável GEMINI_API_KEY não encontrada. Verifique os Secrets do GitHub.")
+client_gemini = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
-# Canais de notícias para monitorar
-RSS_FEEDS = [
-    "https://g1.globo.com/bemestar/rss/g1/",
-    "https://saude.abril.com.br/feed/",
-    "https://www.tuasaude.com/feed/",
-    "https://www.minhavida.com.br/rss",
-    "https://www.bbc.com/portuguese/topics/cyx5krnw38vt/rss.xml"
-]
+# PROMPT EDITORIAL RIGOROSO
+PROMPT_SISTEMA = """
+Você é o redator oficial do blog 'Emagrecer com Saúde'.
+Missão: Ajudar pessoas a emagrecer com saúde e hábitos sustentáveis.
+Tom de voz: Educativo, Acolhedor, Claro, Sem alarmismo.
+Regra de Ouro: 'Orientar com responsabilidade, não vender ilusão'.
+ESTRUTURA OBRIGATÓRIA (HTML):
+1. Introdução empática.
+2. Desenvolvimento com subtítulos H2.
+3. Aplicação prática no dia a dia.
+4. Erros comuns e orientações seguras.
+5. Conclusão motivadora.
+META: Entre 600 e 900 palavras. Use apenas <p> e <h2>.
+"""
 
-IMAGEM_FALLBACK = "https://upload.wikimedia.org/wikipedia/commons/thumb/8/89/News_icon.svg/800px-News_icon.svg.png"
-ARQUIVO_LOG = "posts_publicados.txt"
-
-# =============================
-# AUTENTICAÇÃO E CONTROLE
-# =============================
-
-def autenticar_blogger():
-    # Carrega o token.json que você já possui no repositório
-    creds = Credentials.from_authorized_user_file("token.json", SCOPES)
-    return build("blogger", "v3", credentials=creds)
-
-def ja_publicado(link):
-    if not os.path.exists(ARQUIVO_LOG):
-        return False
-    with open(ARQUIVO_LOG, "r", encoding="utf-8") as f:
-        return link in f.read()
-
-def registrar_publicacao(link):
-    with open(ARQUIVO_LOG, "a", encoding="utf-8") as f:
-        f.write(link + "\n")
-
-# =============================
-# GERAÇÃO DE CONTEÚDO (IA)
-# =============================
-
-def gerar_texto_ia(titulo):
-    if not client_gemini:
-        print("Erro: Cliente Gemini não configurado.")
-        return None
-    
-    # Prompt otimizado para posts de blog
-    prompt = (
-        "Você é um redator especializado em saúde e emagrecimento. "
-        f"Escreva um artigo educativo e profissional sobre: {titulo}. "
-        "O texto deve ter entre 600 e 900 palavras. "
-        "Use parágrafos claros e uma linguagem motivadora."
-    )
-    
+def buscar_imagem_pexels(query):
+    if not PEXELS_API_KEY: return None
+    url = f"https://api.pexels.com/v1/search?query={query}&orientation=landscape&per_page=5"
+    headers = {"Authorization": PEXELS_API_KEY}
     try:
-        # Chamada oficial da biblioteca moderna
-        response = client_gemini.models.generate_content(
-            model="gemini-1.5-flash",
-            contents=prompt
-        )
-        return response.text.strip()
+        response = requests.get(url, headers=headers).json()
+        if response.get('photos'):
+            # Retorna a imagem original que o Blogger redimensiona bem
+            return response['photos'][0]['src']['large2x']
     except Exception as e:
-        print(f"Erro ao gerar texto com a IA: {e}")
-        return None
-
-# =============================
-# FORMATAÇÃO E IMAGENS
-# =============================
-
-def extrair_imagem(entry):
-    if hasattr(entry, "media_content"):
-        return entry.media_content[0].get("url")
-    if hasattr(entry, "media_thumbnail"):
-        return entry.media_thumbnail[0].get("url")
-    resumo = entry.get("summary", "")
-    match = re.search(r'<img[^>]+src="([^">]+)"', resumo)
-    return match.group(1) if match else None
-
-def formatar_texto_html(texto):
-    if not texto: return ""
-    # Transforma quebras de linha em parágrafos HTML justificativos
-    paragrafos = texto.split('\n')
-    html_final = ""
-    for p in paragrafos:
-        if p.strip():
-            html_final += f"<p style='text-align:justify; font-size: medium; line-height:1.6;'>{p.strip()}</p>"
-    return html_final
-
-def gerar_assinatura():
-    return """<hr /><p style="text-align:center; font-weight:bold;">
-    O conhecimento é o combustível para o Sucesso. Não pesa e não ocupa espaço.</p>
-    <p style="text-align:right; font-size:12px;">Por: Marco Daher<br/>© Marco Daher 2026</p>"""
-
-# =============================
-# BUSCA DE GATILHOS (NOTÍCIAS)
-# =============================
-
-def noticia_recente(entry, horas=72):
-    data = entry.get("published_parsed") or entry.get("updated_parsed")
-    if not data: return False
-    return datetime.fromtimestamp(time.mktime(data)) >= datetime.now() - timedelta(hours=horas)
-
-def buscar_novo_tema():
-    for feed_url in RSS_FEEDS:
-        feed = feedparser.parse(feed_url)
-        for entry in feed.entries:
-            titulo = entry.get("title", "").strip()
-            link = entry.get("link", "").strip()
-            if not titulo or not link or ja_publicado(link):
-                continue
-            if noticia_recente(entry):
-                return titulo, link, extrair_imagem(entry)
-    return None, None, None
-
-# =============================
-# FUNÇÃO PRINCIPAL
-# =============================
+        print(f"Erro Pexels: {e}")
+    return "https://images.pexels.com/photos/1103970/pexels-photo-1103970.jpeg" # Fallback saúde
 
 def executar():
-    print("Iniciando Bot Emagrecer com Saúde...")
+    if not os.path.exists("temas.txt"):
+        print("Arquivo temas.txt não encontrado."); return
     
-    # 1. Autentica no Blogger
-    try:
-        service = autenticar_blogger()
-    except Exception as e:
-        print(f"Erro na autenticação do Blogger: {e}")
-        return
+    with open("temas.txt", "r", encoding="utf-8") as f:
+        temas = [l.strip() for l in f.readlines() if l.strip()]
+    
+    tema_escolhido = random.choice(temas)
+    print(f"Processando tema: {tema_escolhido}")
 
-    # 2. Busca nova notícia como tema
-    titulo, link, imagem_rss = buscar_novo_tema()
-    if not titulo:
-        print("Nenhuma notícia nova encontrada nos feeds.")
-        return
+    # 1. Geração de Conteúdo
+    prompt_final = f"{PROMPT_SISTEMA}\nEscreva o artigo sobre: {tema_escolhido}"
+    response = client_gemini.models.generate_content(model="gemini-1.5-flash", contents=prompt_final)
+    texto = response.text
 
-    print(f"Novo tema encontrado: {titulo}")
+    # 2. Validação de Tamanho
+    contagem = len(texto.split())
+    if not (600 <= contagem <= 900):
+        print(f"Post REJEITADO: {contagem} palavras (fora do limite 600-900)."); return
 
-    # 3. Gera o texto com o Gemini
-    texto_artigo = gerar_texto_ia(titulo)
-    if not texto_artigo:
-        print("Falha ao gerar o conteúdo do post.")
-        return
+    # 3. Busca de Imagens no Pexels
+    img_topo = buscar_imagem_pexels(f"{tema_escolhido} health")
+    img_meio = buscar_imagem_pexels("healthy lifestyle wellness")
 
-    # 4. Monta o HTML final
-    imagem_final = imagem_rss if imagem_rss else IMAGEM_FALLBACK
-    conteudo_html = f"""
-    <h2 style="text-align:center;">{titulo}</h2>
-    <div style="text-align:center; margin:20px 0;">
-        <img src="{imagem_final}" style="max-width:100%; border-radius: 8px;" />
-    </div>
-    {formatar_texto_html(texto_artigo)}
-    {gerar_assinatura()}
+    # 4. Formatação HTML (Estilo Marco Daher)
+    corpo_html = ""
+    for p in texto.split('\n'):
+        if p.strip():
+            if len(p) < 70 and not p.endswith('.'): # Detecta subtítulo
+                corpo_html += f"<h2 style='font-family:Arial; font-size:large; text-align:left; color:#2c3e50; margin-top:20px;'>{p.replace('#','')}</h2>"
+            else:
+                corpo_html += f"<p style='font-family:Arial; font-size:medium; text-align:justify; line-height:1.6;'>{p}</p>"
+
+    html_final = f"""
+    <h1 style='font-family:Arial; font-size:x-large; text-align:center; color:#1a1a1a;'>{tema_escolhido.upper()}</h1>
+    <div style='text-align:center; margin:20px 0;'><img src='{img_topo}' style='width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:8px;'/></div>
+    {corpo_html}
+    <div style='text-align:center; margin:20px 0;'><img src='{img_meio}' style='width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:8px;'/></div>
+    <hr />
+    <p style='text-align:center; font-family:Arial; font-weight:bold;'>O conhecimento é o combustível para o Sucesso.</p>
+    <p style='text-align:right; font-family:Arial; font-size:12px;'>Por: Marco Daher<br/>© Marco Daher 2026</p>
     """
 
-    # 5. Publica no Blogger
-    try:
-        service.posts().insert(
-            blogId=BLOG_ID,
-            body={
-                "title": titulo,
-                "content": conteudo_html,
-                "labels": ["Saúde", "Bem Estar", "Emagrecimento"],
-                "status": "LIVE"
-            }
-        ).execute()
-        
-        registrar_publicacao(link)
-        print(f"✅ Post publicado com sucesso: {titulo}")
-    except Exception as e:
-        print(f"Erro ao publicar no Blogger: {e}")
+    # 5. Publicação no Blogger
+    creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+    service = build("blogger", "v3", credentials=creds)
+    service.posts().insert(
+        blogId=BLOG_ID,
+        body={"title": tema_escolhido.title(), "content": html_final, "labels": ["Saúde", "Bem-Estar"], "status": "LIVE"}
+    ).execute()
+    print("✅ Post publicado com sucesso via Pexels!")
 
 if __name__ == "__main__":
     executar()
