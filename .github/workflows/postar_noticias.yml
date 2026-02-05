@@ -19,7 +19,7 @@ jobs:
       - name: Instalar Dependências
         run: |
           pip install google-auth google-api-python-client google-auth-oauthlib
-          pip install -U google-generativeai requests
+          pip install -U google-genai requests
 
       - name: Rodar Bot
         env:
