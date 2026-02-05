@@ -1,5 +1,6 @@
 # =============================================================
 # RUN_BOT.PY — BLOGGER BOT (EMAGRECER COM SAÚDE)
+# VERSÃO GEMINI 1.5 FLASH
 # =============================================================
 
 import feedparser
@@ -8,9 +9,9 @@ import os
 import time
 import random
 from datetime import datetime, timedelta
+import google.generativeai as genai
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from openai import OpenAI
 
 # =============================
 # CONFIGURAÇÕES GERAIS
@@ -19,8 +20,11 @@ from openai import OpenAI
 BLOG_ID = "5251820458826857223"  # EMAGRECER COM SAÚDE
 SCOPES = ["https://www.googleapis.com/auth/blogger"]
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=OPENAI_API_KEY)
+# --- CONFIGURAÇÃO GEMINI ---
+# Substitua pela sua chave ou configure a variável de ambiente
+GEMINI_API_KEY = "SUA_API_KEY_AQUI" 
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 # RSS APENAS COMO GATILHO
 RSS_FEEDS = [
@@ -95,40 +99,35 @@ def extrair_imagem(entry):
     return match.group(1) if match else None
 
 # =============================
-# TEXTO VIA IA (CONTEÚDO FINAL)
+# TEXTO VIA GEMINI (CONTEÚDO FINAL)
 # =============================
 
 def gerar_texto_ia(titulo):
-    resposta = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "Você é um redator especializado em saúde e emagrecimento. "
-                    "Escreva um artigo educativo, responsável, claro e profissional, "
-                    "com no mínimo 600 e no máximo 900 palavras."
-                )
-            },
-            {
-                "role": "user",
-                "content": f"Escreva um artigo completo sobre: {titulo}"
-            }
-        ],
-        max_tokens=1200
+    prompt = (
+        "Você é um redator especializado em saúde e emagrecimento. "
+        "Escreva um artigo educativo, responsável, claro e profissional, "
+        f"com no mínimo 600 e no máximo 900 palavras sobre o tema: {titulo}. "
+        "Não use Markdown excessivo, mantenha o foco em parágrafos bem estruturados."
     )
-
-    return resposta.choices[0].message.content.strip()
+    
+    try:
+        response = model.generate_content(prompt)
+        return response.text.strip()
+    except Exception as e:
+        print(f"Erro ao gerar texto com Gemini: {e}")
+        return None
 
 # =============================
 # FORMATAÇÃO HTML
 # =============================
 
 def formatar_texto(texto):
+    if not texto: return ""
+    # Divide o texto em blocos de frases para criar parágrafos
     frases = re.split(r'(?<=[.!?])\s+', texto)
     blocos = []
-
     temp = []
+    
     for frase in frases:
         temp.append(frase)
         if len(temp) >= 2:
@@ -148,8 +147,7 @@ def formatar_texto(texto):
 # =============================
 
 def gerar_assinatura():
-    return """<!-- ASSINATURA PADRÃO -->
-<hr />
+    return """<hr />
 <p style="text-align:center; font-weight:bold;">
 O conhecimento é o combustível para o Sucesso. Não pesa e não ocupa espaço.
 </p>
@@ -180,9 +178,11 @@ def buscar_gatilho():
                 continue
 
             if noticia_recente(entry):
-                return titulo, link
+                # Tenta pegar a imagem do RSS se disponível
+                imagem_rss = extrair_imagem(entry)
+                return titulo, link, imagem_rss
 
-    return None, None
+    return None, None, None
 
 # =============================
 # GERAÇÃO DO HTML FINAL
@@ -193,7 +193,7 @@ def gerar_html(titulo, texto, imagem):
 <h2 style="text-align:center;">{titulo}</h2>
 
 <div style="text-align:center; margin:20px 0;">
-<img src="{imagem}" style="max-width:100%;" />
+<img src="{imagem}" style="max-width:100%; border-radius: 8px;" />
 </div>
 
 {formatar_texto(texto)}
@@ -208,7 +208,7 @@ def gerar_html(titulo, texto, imagem):
 def executar():
     service = autenticar_blogger()
 
-    titulo, link = buscar_gatilho()
+    titulo, link, imagem_rss = buscar_gatilho()
     if not titulo:
         print("Nenhum gatilho novo encontrado.")
         return
@@ -216,7 +216,12 @@ def executar():
     print("PUBLICANDO NO BLOG_ID:", BLOG_ID)
 
     texto = gerar_texto_ia(titulo)
-    imagem = IMAGEM_FALLBACK
+    if not texto:
+        print("Falha ao gerar conteúdo.")
+        return
+
+    # Usa a imagem do RSS, se não tiver, usa o Fallback
+    imagem = imagem_rss if imagem_rss else IMAGEM_FALLBACK
 
     html = gerar_html(titulo, texto, imagem)
 
