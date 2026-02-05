@@ -59,7 +59,6 @@ def obter_esqueleto_html(dados):
                 Acompanhe mais dicas e novidades em nossa <b>Rede de Conhecimento MD</b> logo abaixo.
             </p>
         </div>
-
         <div style='margin-top:20px; border-top: 1px solid #eee; padding-top: 10px;'>
             {dados['assinatura']}
         </div>
