@@ -5,8 +5,8 @@ def obter_esqueleto_html(dados):
     html = f"""
     Template
 
-<div style='font-family:Arial, sans-serif; color:{cor_base}; line-height: 1.6;'>
-        <h1 style='text-align:center; font-size:x-large; font-weight:bold; margin-bottom:20px;'>
+<div style="color: {cor_base}; font-family: Arial, sans-serif; line-height: 1.6;">
+        <h1 style="font-weight: bold; margin-bottom: 20px; text-align: center; font-size: x-large;">
             {dados['titulo'].upper()}
         </h1>
 
@@ -14,14 +14,14 @@ def obter_esqueleto_html(dados):
             <img src='{dados['img_topo']}' style='width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);'/>
         </div>
 
-        <div style='font-size:medium; text-align:justify; margin:10px 0;'>
+        <div style='font-size: medium; text-align:justify; margin:10px 0;'>
             {dados['intro']}
         </div>
 
-        <p style='font-size:large; font-weight:bold; text-align:left; margin:25px 0 5px 0;'>
+        <p style='font-size: large; font-weight:bold; text-align:left; margin:25px 0 5px 0;'>
             {dados['sub1']}
         </p>
-        <div style='font-size:medium; text-align:justify; margin:10px 0;'>
+        <div style='font-size: medium; text-align:justify; margin:10px 0;'>
             {dados['texto1']}
         </div>
 
@@ -29,24 +29,24 @@ def obter_esqueleto_html(dados):
             <img src='{dados['img_meio']}' style='width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);'/>
         </div>
 
-        <p style='font-size:large; font-weight:bold; text-align:left; margin:25px 0 5px 0;'>
+        <p style='font-size: large; font-weight:bold; text-align:left; margin:25px 0 5px 0;'>
             {dados['sub2']}
         </p>
-        <div style='font-size:medium; text-align:justify; margin:10px 0;'>
+        <div style='font-size: medium; text-align:justify; margin:10px 0;'>
             {dados['texto2']}
         </div>
 
-        <p style='font-size:large; font-weight:bold; text-align:left; margin:25px 0 5px 0;'>
+        <p style='font-size: large; font-weight:bold; text-align:left; margin:25px 0 5px 0;'>
             {dados['sub3']}
         </p>
-        <div style='font-size:medium; text-align:justify; margin:10px 0;'>
+        <div style='font-size: medium; text-align:justify; margin:10px 0;'>
             {dados['texto3']}
         </div>
 
-        <p style='font-size:large; font-weight:bold; text-align:left; margin:25px 0 5px 0;'>
+        <p style='font-size: large; font-weight:bold; text-align:left; margin:25px 0 5px 0;'>
             CONSIDERAÇÕES FINAIS
         </p>
-        <div style='font-size:medium; text-align:justify; margin:10px 0;'>
+        <div style='font-size: medium; text-align:justify; margin:10px 0;'>
             {dados['texto_conclusao']}
         </div>
 
