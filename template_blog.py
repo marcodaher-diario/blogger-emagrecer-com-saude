@@ -1,8 +1,10 @@
 def obter_esqueleto_html(dados, cor_base, link_wa):
     cor_base = "#003366"  # Azul Marinho MD
     link_wa = f"https://api.whatsapp.com/send?text=Olha que artigo interessante que li no blog do Marco Daher: {dados['titulo']} - Confira aqui!"
-
+    
     html = f"""
+    Template
+    
 <div style="color: {cor_base}; font-family: Arial, sans-serif; line-height: 1.6;">
 
     <h1 style="font-size: x-large; font-weight: bold; margin-bottom: 20px; text-align: center;">
