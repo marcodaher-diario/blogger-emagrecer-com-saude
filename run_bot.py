@@ -17,18 +17,12 @@ SCOPES = ["https://www.googleapis.com/auth/blogger"]
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
 
-# INICIALIZAÇÃO DO CLIENTE FORÇANDO A VERSÃO ESTÁVEL (v1)
-client_gemini = genai.Client(
-    api_key=GEMINI_API_KEY,
-    http_options={'api_version': 'v1'} 
-)
+# Inicialização do Cliente
+client_gemini = genai.Client(api_key=GEMINI_API_KEY)
 
 PROMPT_SISTEMA = """
 Você é o redator oficial do blog 'Emagrecer com Saúde'. 
-Missão: Ajudar pessoas a emagrecer com saúde e hábitos sustentáveis.
-Regra de Ouro: 'Orientar com responsabilidade, não vender ilusão'.
-ESTRUTURA: Introdução empática, Subtítulos H2, Aplicação prática e Conclusão motivadora.
-REQUISITO: Entre 600 e 900 palavras. Tipografia: Arial.
+Missão: Ajudar pessoas a emagrecer com saúde. Texto entre 600 e 900 palavras. Arial.
 """
 
 def buscar_imagem_pexels(query):
@@ -52,26 +46,42 @@ def executar():
     tema_escolhido = random.choice(temas)
     print(f"🚀 Iniciando processo para o tema: {tema_escolhido}")
 
-    # 2. Geração de Conteúdo (Usando o modelo estável v1)
-    try:
-        response = client_gemini.models.generate_content(
-            model="gemini-1.5-flash", 
-            contents=f"{PROMPT_SISTEMA}\n\nEscreva um artigo detalhado sobre: {tema_escolhido}"
-        )
-        texto_gerado = response.text
-    except Exception as e:
-        print(f"Erro na IA: {e}")
-        return
+    # 2. GERAÇÃO EM CASCATA (Testa vários nomes de modelos)
+    texto_gerado = None
+    # Lista de modelos por ordem de probabilidade de funcionamento
+    modelos_disponiveis = [
+        "gemini-1.5-flash", 
+        "gemini-1.5-flash-001",
+        "gemini-1.5-pro",
+        "gemini-pro"
+    ]
+
+    for nome_modelo in modelos_disponiveis:
+        try:
+            print(f"Tentando modelo: {nome_modelo}...")
+            response = client_gemini.models.generate_content(
+                model=nome_modelo, 
+                contents=f"{PROMPT_SISTEMA}\n\nEscreva um artigo completo sobre: {tema_escolhido}"
+            )
+            texto_gerado = response.text
+            if texto_gerado:
+                print(f"✅ Sucesso com o modelo: {nome_modelo}")
+                break
+        except Exception as e:
+            print(f"❌ Falha no {nome_modelo}: {e}")
+
+    if not texto_gerado:
+        print("🛑 Todos os modelos falharam. Verifique sua cota ou região no Google AI Studio."); return
 
     # 3. Validação de Tamanho
     contagem = len(texto_gerado.split())
     print(f"Texto gerado com {contagem} palavras.")
     if not (600 <= contagem <= 900):
-        print(f"⚠️ Fora do limite (600-900). Tentando novamente no próximo ciclo."); return
+        print("⚠️ Fora do limite. Abortando."); return
 
     # 4. Imagens e HTML
     img1 = buscar_imagem_pexels(f"{tema_escolhido} health")
-    img2 = buscar_imagem_pexels("healthy lifestyle")
+    img2 = buscar_imagem_pexels("wellness")
 
     corpo_html = ""
     for p in texto_gerado.split('\n'):
@@ -81,22 +91,16 @@ def executar():
             else:
                 corpo_html += f"<p style='font-family:Arial; font-size:medium; text-align:justify; line-height:1.6;'>{p}</p>"
 
-    html_final = f"""
-    <h1 style='font-family:Arial; font-size:x-large; text-align:center;'>{tema_escolhido.upper()}</h1>
-    <div style='text-align:center; margin:20px 0;'><img src='{img1}' style='width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:8px;'/></div>
-    {corpo_html}
-    <div style='text-align:center; margin:20px 0;'><img src='{img2}' style='width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:8px;'/></div>
-    {BLOCO_FIXO_FINAL}
-    """
+    html_final = f"<h1>{tema_escolhido.upper()}</h1><img src='{img1}' style='width:100%; aspect-ratio:16/9;'/><br/>{corpo_html}<br/><img src='{img2}' style='width:100%; aspect-ratio:16/9;'/><br/>{BLOCO_FIXO_FINAL}"
 
     # 5. Publicação
     creds = Credentials.from_authorized_user_file("token.json", SCOPES)
     service = build("blogger", "v3", credentials=creds)
     service.posts().insert(
         blogId=BLOG_ID,
-        body={"title": tema_escolhido.title(), "content": html_final, "labels": ["Saúde", "Bem-Estar"], "status": "LIVE"}
+        body={"title": tema_escolhido.title(), "content": html_final, "labels": ["Saúde"], "status": "LIVE"}
     ).execute()
-    print(f"✅ SUCESSO! Post sobre '{tema_escolhido}' publicado.")
+    print("✅ PUBLICADO COM SUCESSO!")
 
 if __name__ == "__main__":
     executar()
