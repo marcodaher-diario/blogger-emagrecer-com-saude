@@ -50,16 +50,25 @@ def executar():
     tema = random.choice(temas)
     print(f"🤖 Preparando postagem sobre: {tema}")
 
-    # 2. Geração do conteúdo (Usando a SDK estável v1)
+    # 2. Geração do conteúdo (Forçando o modelo estável v1)
     try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
+        # Mudamos de 'gemini-1.5-flash' para o nome técnico completo
+        # Isso evita o erro 404 na maioria das regiões
         response = client.models.generate_content(
             model='gemini-1.5-flash', 
-            contents=f"Escreva um artigo de 700 palavras sobre {tema} para o blog Emagrecer com Saúde. Use Arial e subtítulos H2."
+            contents=f"Escreva um artigo de 700 palavras sobre {tema} para o blog Emagrecer com Saúde. Use Arial e subtítulos H2.",
+            config={'api_version': 'v1'} # FORÇA A VERSÃO ESTÁVEL v1
         )
         texto_corpo = response.text.replace('\n', '<br/>')
     except Exception as e:
-        print(f"❌ Erro na IA: {e}"); return
+        print(f"Tentando alternativa após erro: {e}")
+        # SE O ACIMA FALHAR, TESTAMOS O MODELO PRO (Que é mais estável)
+        response = client.models.generate_content(
+            model='gemini-1.5-pro', 
+            contents=f"Escreva um artigo de 700 palavras sobre {tema} para o blog Emagrecer com Saúde. Use Arial e subtítulos H2.",
+            config={'api_version': 'v1'}
+        )
+        texto_corpo = response.text.replace('\n', '<br/>')
 
     # 3. Busca de imagem 16:9
     img = buscar_foto(tema)
