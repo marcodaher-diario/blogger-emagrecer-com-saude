@@ -16,7 +16,7 @@ from openai import OpenAI
 # CONFIGURAÇÕES GERAIS
 # =============================
 
-BLOG_ID = "7605688984374445860"
+BLOG_ID = "5251820458826857223"
 SCOPES = ["https://www.googleapis.com/auth/blogger"]
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
