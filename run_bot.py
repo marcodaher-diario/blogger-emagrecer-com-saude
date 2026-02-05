@@ -1,15 +1,20 @@
 # =============================================================
 # RUN_BOT.PY — BLOGGER BOT (EMAGRECER COM SAÚDE)
-# VERSÃO GEMINI 1.5 FLASH
+# VERSÃO ATUALIZADA 2026 - GEMINI API
 # =============================================================
 
+import os
 import feedparser
 import re
-import os
 import time
-import random
 from datetime import datetime, timedelta
-import google.generativeai as genai
+
+# Importação da nova biblioteca do Google
+try:
+    from google import genai
+except ImportError:
+    print("ERRO: A biblioteca 'google-genai' não está instalada.")
+
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
@@ -17,16 +22,20 @@ from googleapiclient.discovery import build
 # CONFIGURAÇÕES GERAIS
 # =============================
 
-BLOG_ID = "5251820458826857223"  # EMAGRECER COM SAÚDE
+BLOG_ID = "5251820458826857223"
 SCOPES = ["https://www.googleapis.com/auth/blogger"]
 
-# --- CONFIGURAÇÃO GEMINI ---
-# Substitua pela sua chave ou configure a variável de ambiente
-GEMINI_API_KEY = "SUA_API_KEY_AQUI" 
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+# BUSCA A CHAVE QUE VOCÊ CADASTROU NO GITHUB SECRETS
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# RSS APENAS COMO GATILHO
+# Inicializa o cliente do Gemini
+client_gemini = None
+if GEMINI_API_KEY:
+    client_gemini = genai.Client(api_key=GEMINI_API_KEY)
+else:
+    print("AVISO: Variável GEMINI_API_KEY não encontrada. Verifique os Secrets do GitHub.")
+
+# Canais de notícias para monitorar
 RSS_FEEDS = [
     "https://g1.globo.com/bemestar/rss/g1/",
     "https://saude.abril.com.br/feed/",
@@ -39,16 +48,13 @@ IMAGEM_FALLBACK = "https://upload.wikimedia.org/wikipedia/commons/thumb/8/89/New
 ARQUIVO_LOG = "posts_publicados.txt"
 
 # =============================
-# AUTENTICAÇÃO BLOGGER
+# AUTENTICAÇÃO E CONTROLE
 # =============================
 
 def autenticar_blogger():
+    # Carrega o token.json que você já possui no repositório
     creds = Credentials.from_authorized_user_file("token.json", SCOPES)
     return build("blogger", "v3", credentials=creds)
-
-# =============================
-# CONTROLE DE DUPLICAÇÃO
-# =============================
 
 def ja_publicado(link):
     if not os.path.exists(ARQUIVO_LOG):
@@ -61,31 +67,35 @@ def registrar_publicacao(link):
         f.write(link + "\n")
 
 # =============================
-# TAGS — LIMITE 200 CARACTERES
+# GERAÇÃO DE CONTEÚDO (IA)
 # =============================
 
-def gerar_tags_blogger(texto, limite=200):
-    palavras = re.findall(r'\w+', texto.lower())
-    ignorar = {
-        "a","o","as","os","um","uma","de","do","da","dos","das",
-        "em","no","na","nos","nas","para","com","e","ou","que"
-    }
-
-    tags = []
-    total = 0
-
-    for p in palavras:
-        if p in ignorar or len(p) < 3 or p in tags:
-            continue
-        if total + len(p) + 2 > limite:
-            break
-        tags.append(p.capitalize())
-        total += len(p) + 2
-
-    return tags
+def gerar_texto_ia(titulo):
+    if not client_gemini:
+        print("Erro: Cliente Gemini não configurado.")
+        return None
+    
+    # Prompt otimizado para posts de blog
+    prompt = (
+        "Você é um redator especializado em saúde e emagrecimento. "
+        f"Escreva um artigo educativo e profissional sobre: {titulo}. "
+        "O texto deve ter entre 600 e 900 palavras. "
+        "Use parágrafos claros e uma linguagem motivadora."
+    )
+    
+    try:
+        # Chamada oficial da biblioteca moderna
+        response = client_gemini.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=prompt
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"Erro ao gerar texto com a IA: {e}")
+        return None
 
 # =============================
-# EXTRAÇÃO DE IMAGEM
+# FORMATAÇÃO E IMAGENS
 # =============================
 
 def extrair_imagem(entry):
@@ -93,150 +103,101 @@ def extrair_imagem(entry):
         return entry.media_content[0].get("url")
     if hasattr(entry, "media_thumbnail"):
         return entry.media_thumbnail[0].get("url")
-
     resumo = entry.get("summary", "")
     match = re.search(r'<img[^>]+src="([^">]+)"', resumo)
     return match.group(1) if match else None
 
-# =============================
-# TEXTO VIA GEMINI (CONTEÚDO FINAL)
-# =============================
-
-def gerar_texto_ia(titulo):
-    prompt = (
-        "Você é um redator especializado em saúde e emagrecimento. "
-        "Escreva um artigo educativo, responsável, claro e profissional, "
-        f"com no mínimo 600 e no máximo 900 palavras sobre o tema: {titulo}. "
-        "Não use Markdown excessivo, mantenha o foco em parágrafos bem estruturados."
-    )
-    
-    try:
-        response = model.generate_content(prompt)
-        return response.text.strip()
-    except Exception as e:
-        print(f"Erro ao gerar texto com Gemini: {e}")
-        return None
-
-# =============================
-# FORMATAÇÃO HTML
-# =============================
-
-def formatar_texto(texto):
+def formatar_texto_html(texto):
     if not texto: return ""
-    # Divide o texto em blocos de frases para criar parágrafos
-    frases = re.split(r'(?<=[.!?])\s+', texto)
-    blocos = []
-    temp = []
-    
-    for frase in frases:
-        temp.append(frase)
-        if len(temp) >= 2:
-            blocos.append(" ".join(temp))
-            temp = []
-
-    if temp:
-        blocos.append(" ".join(temp))
-
-    return "".join(
-        f"<p style='text-align:justify; font-size: medium; line-height:1.6;'>{b}</p>"
-        for b in blocos
-    )
-
-# =============================
-# ASSINATURA (INTACTA)
-# =============================
+    # Transforma quebras de linha em parágrafos HTML justificativos
+    paragrafos = texto.split('\n')
+    html_final = ""
+    for p in paragrafos:
+        if p.strip():
+            html_final += f"<p style='text-align:justify; font-size: medium; line-height:1.6;'>{p.strip()}</p>"
+    return html_final
 
 def gerar_assinatura():
-    return """<hr />
-<p style="text-align:center; font-weight:bold;">
-O conhecimento é o combustível para o Sucesso. Não pesa e não ocupa espaço.
-</p>
-<p style="text-align:right; font-size:12px;">
-Por: Marco Daher<br/>
-© Marco Daher 2026
-</p>
-"""
+    return """<hr /><p style="text-align:center; font-weight:bold;">
+    O conhecimento é o combustível para o Sucesso. Não pesa e não ocupa espaço.</p>
+    <p style="text-align:right; font-size:12px;">Por: Marco Daher<br/>© Marco Daher 2026</p>"""
 
 # =============================
-# BUSCA DE NOTÍCIAS (GATILHO)
+# BUSCA DE GATILHOS (NOTÍCIAS)
 # =============================
 
 def noticia_recente(entry, horas=72):
     data = entry.get("published_parsed") or entry.get("updated_parsed")
-    if not data:
-        return False
+    if not data: return False
     return datetime.fromtimestamp(time.mktime(data)) >= datetime.now() - timedelta(hours=horas)
 
-def buscar_gatilho():
+def buscar_novo_tema():
     for feed_url in RSS_FEEDS:
         feed = feedparser.parse(feed_url)
         for entry in feed.entries:
             titulo = entry.get("title", "").strip()
             link = entry.get("link", "").strip()
-
             if not titulo or not link or ja_publicado(link):
                 continue
-
             if noticia_recente(entry):
-                # Tenta pegar a imagem do RSS se disponível
-                imagem_rss = extrair_imagem(entry)
-                return titulo, link, imagem_rss
-
+                return titulo, link, extrair_imagem(entry)
     return None, None, None
 
 # =============================
-# GERAÇÃO DO HTML FINAL
-# =============================
-
-def gerar_html(titulo, texto, imagem):
-    return f"""
-<h2 style="text-align:center;">{titulo}</h2>
-
-<div style="text-align:center; margin:20px 0;">
-<img src="{imagem}" style="max-width:100%; border-radius: 8px;" />
-</div>
-
-{formatar_texto(texto)}
-
-{gerar_assinatura()}
-"""
-
-# =============================
-# EXECUÇÃO
+# FUNÇÃO PRINCIPAL
 # =============================
 
 def executar():
-    service = autenticar_blogger()
+    print("Iniciando Bot Emagrecer com Saúde...")
+    
+    # 1. Autentica no Blogger
+    try:
+        service = autenticar_blogger()
+    except Exception as e:
+        print(f"Erro na autenticação do Blogger: {e}")
+        return
 
-    titulo, link, imagem_rss = buscar_gatilho()
+    # 2. Busca nova notícia como tema
+    titulo, link, imagem_rss = buscar_novo_tema()
     if not titulo:
-        print("Nenhum gatilho novo encontrado.")
+        print("Nenhuma notícia nova encontrada nos feeds.")
         return
 
-    print("PUBLICANDO NO BLOG_ID:", BLOG_ID)
+    print(f"Novo tema encontrado: {titulo}")
 
-    texto = gerar_texto_ia(titulo)
-    if not texto:
-        print("Falha ao gerar conteúdo.")
+    # 3. Gera o texto com o Gemini
+    texto_artigo = gerar_texto_ia(titulo)
+    if not texto_artigo:
+        print("Falha ao gerar o conteúdo do post.")
         return
 
-    # Usa a imagem do RSS, se não tiver, usa o Fallback
-    imagem = imagem_rss if imagem_rss else IMAGEM_FALLBACK
+    # 4. Monta o HTML final
+    imagem_final = imagem_rss if imagem_rss else IMAGEM_FALLBACK
+    conteudo_html = f"""
+    <h2 style="text-align:center;">{titulo}</h2>
+    <div style="text-align:center; margin:20px 0;">
+        <img src="{imagem_final}" style="max-width:100%; border-radius: 8px;" />
+    </div>
+    {formatar_texto_html(texto_artigo)}
+    {gerar_assinatura()}
+    """
 
-    html = gerar_html(titulo, texto, imagem)
-
-    service.posts().insert(
-        blogId=BLOG_ID,
-        body={
-            "title": titulo,
-            "content": html,
-            "labels": gerar_tags_blogger(titulo),
-            "status": "LIVE"
-        }
-    ).execute()
-
-    registrar_publicacao(link)
-    print("✅ Publicado com sucesso:", titulo)
+    # 5. Publica no Blogger
+    try:
+        service.posts().insert(
+            blogId=BLOG_ID,
+            body={
+                "title": titulo,
+                "content": conteudo_html,
+                "labels": ["Saúde", "Bem Estar", "Emagrecimento"],
+                "status": "LIVE"
+            }
+        ).execute()
+        
+        registrar_publicacao(link)
+        print(f"✅ Post publicado com sucesso: {titulo}")
+    except Exception as e:
+        print(f"Erro ao publicar no Blogger: {e}")
 
 if __name__ == "__main__":
     executar()
