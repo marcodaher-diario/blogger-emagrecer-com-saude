@@ -7,19 +7,22 @@ from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
-# Assinatura oficial
+# 1. PRESERVADO: Sua assinatura oficial do configuracoes.py
 try:
     from configuracoes import BLOCO_FIXO_FINAL
-except:
+except ImportError:
     BLOCO_FIXO_FINAL = ""
 
+# 2. CONFIGURAÇÕES (Variáveis de Ambiente conforme o manual)
 BLOG_ID = "5251820458826857223"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
 
+# Inicialização da IA
 genai.configure(api_key=GEMINI_API_KEY)
 
 def renovar_token():
+    """Garante o acesso ao Blogger usando o Refresh Token do seu token.json"""
     with open("token.json", "r") as f:
         info = json.load(f)
     creds = Credentials.from_authorized_user_info(info, ["https://www.googleapis.com/auth/blogger"])
@@ -31,43 +34,61 @@ def renovar_token():
     return creds
 
 def buscar_foto(tema):
+    """Busca imagem no Pexels e garante o link da foto"""
     url = f"https://api.pexels.com/v1/search?query={tema}&orientation=landscape&per_page=1"
     headers = {"Authorization": PEXELS_API_KEY}
     try:
         r = requests.get(url, headers=headers).json()
-        return r['photos'][0]['src']['large2x']
+        if r.get('photos'):
+            return r['photos'][0]['src']['large2x']
     except:
-        return "https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg"
+        pass
+    return "https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg"
 
 def executar():
-    # Lê seus 14 temas
+    # Carrega seus 14 temas originais do temas.txt
     with open("temas.txt", "r", encoding="utf-8") as f:
         temas = [l.strip() for l in f.readlines() if l.strip()]
     
     tema = random.choice(temas)
-    print(f"🤖 Tentando postar sobre: {tema}")
+    print(f"🚀 Iniciando postagem sobre: {tema}")
 
-    # MUDANÇA PARA GEMINI-PRO (Mais estável contra erro 404)
+    # 3. GERAÇÃO DE CONTEÚDO (Usando o modelo estável v1)
     try:
-        model = genai.GenerativeModel('gemini-pro') 
-        response = model.generate_content(
-            f"Escreva um artigo de 700 palavras sobre {tema} para o blog Emagrecer com Saúde. Use Arial e subtítulos H2."
-        )
-        texto_corpo = response.text.replace('\n', '<br/>')
+        # Forçamos o modelo flash que é o mais rápido e atual
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        prompt = f"Escreva um artigo de 700 palavras sobre {tema} para o blog Emagrecer com Saúde. Use tom motivador, fonte Arial e subtítulos H2."
+        response = model.generate_content(prompt)
+        texto_gerado = response.text
     except Exception as e:
-        print(f"Erro no Gemini-Pro: {e}")
+        print(f"Erro na IA: {e}")
         return
 
+    # 4. MONTAGEM DO HTML (Regra 16:9 e Assinatura)
     img = buscar_foto(tema)
-    html_final = f"<div style='font-family:Arial; text-align:justify;'><h1 style='text-align:center;'>{tema.upper()}</h1><img src='{img}' style='width:100%; aspect-ratio:16/9; border-radius:10px;'/><br/>{texto_corpo}<br/>{BLOCO_FIXO_FINAL}</div>"
+    html_final = f"""
+    <div style='font-family:Arial; text-align:justify;'>
+        <h1 style='text-align:center;'>{tema.upper()}</h1>
+        <div style='text-align:center; margin:20px 0;'>
+            <img src='{img}' style='width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:10px;'/>
+        </div>
+        {texto_gerado.replace('\n', '<br/>')}
+        <br/><br/>
+        {BLOCO_FIXO_FINAL}
+    </div>
+    """
 
+    # 5. PUBLICAÇÃO
     try:
         creds = renovar_token()
         service = build("blogger", "v3", credentials=creds)
-        service.posts().insert(blogId=BLOG_ID, body={"title": tema.title(), "content": html_final, "status": "LIVE"}).execute()
-        print(f"✅ FINALMENTE! Artigo sobre '{tema}' publicado.")
+        service.posts().insert(
+            blogId=BLOG_ID, 
+            body={"title": tema.title(), "content": html_final, "status": "LIVE"}
+        ).execute()
+        print(f"✅ SUCESSO! Artigo '{tema}' publicado com sua assinatura oficial.")
     except Exception as e:
-        print(f"❌ Erro no Blogger: {e}")
+        print(f"❌ Erro ao publicar no Blogger: {e}")
 
 if __name__ == "__main__":
     executar()
