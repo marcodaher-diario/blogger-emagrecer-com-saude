@@ -1,7 +1,7 @@
 import os
 import random
 import requests
-import google.generativeai as google_ia # Mudança para a biblioteca estável
+from google import genai
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
@@ -17,16 +17,18 @@ SCOPES = ["https://www.googleapis.com/auth/blogger"]
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
 
-# Inicialização da IA (Versão Estável)
-google_ia.configure(api_key=GEMINI_API_KEY)
+# INICIALIZAÇÃO DO CLIENTE FORÇANDO A VERSÃO ESTÁVEL (v1)
+client_gemini = genai.Client(
+    api_key=GEMINI_API_KEY,
+    http_options={'api_version': 'v1'} 
+)
 
 PROMPT_SISTEMA = """
 Você é o redator oficial do blog 'Emagrecer com Saúde'. 
-Sua missão: Ajudar pessoas a emagrecer com saúde, informação confiável e hábitos sustentáveis.
-Tom de voz: Educativo, Acolhedor, Claro, Sem alarmismo.
+Missão: Ajudar pessoas a emagrecer com saúde e hábitos sustentáveis.
 Regra de Ouro: 'Orientar com responsabilidade, não vender ilusão'.
-ESTRUTURA OBRIGATÓRIA: Introdução empática, Subtítulos H2, Aplicação prática e Conclusão motivadora.
-REQUISITO TÉCNICO: Mínimo 600 e máximo 900 palavras. Tipografia: Arial.
+ESTRUTURA: Introdução empática, Subtítulos H2, Aplicação prática e Conclusão motivadora.
+REQUISITO: Entre 600 e 900 palavras. Tipografia: Arial.
 """
 
 def buscar_imagem_pexels(query):
@@ -50,10 +52,12 @@ def executar():
     tema_escolhido = random.choice(temas)
     print(f"🚀 Iniciando processo para o tema: {tema_escolhido}")
 
-    # 2. Geração de Conteúdo (Usando GenerativeModel estável)
+    # 2. Geração de Conteúdo (Usando o modelo estável v1)
     try:
-        model = google_ia.GenerativeModel('gemini-1.5-flash')
-        response = model.generate_content(f"{PROMPT_SISTEMA}\n\nEscreva sobre: {tema_escolhido}")
+        response = client_gemini.models.generate_content(
+            model="gemini-1.5-flash", 
+            contents=f"{PROMPT_SISTEMA}\n\nEscreva um artigo detalhado sobre: {tema_escolhido}"
+        )
         texto_gerado = response.text
     except Exception as e:
         print(f"Erro na IA: {e}")
@@ -63,11 +67,11 @@ def executar():
     contagem = len(texto_gerado.split())
     print(f"Texto gerado com {contagem} palavras.")
     if not (600 <= contagem <= 900):
-        print("⚠️ Fora do limite. Abortando."); return
+        print(f"⚠️ Fora do limite (600-900). Tentando novamente no próximo ciclo."); return
 
     # 4. Imagens e HTML
     img1 = buscar_imagem_pexels(f"{tema_escolhido} health")
-    img2 = buscar_imagem_pexels("wellness lifestyle")
+    img2 = buscar_imagem_pexels("healthy lifestyle")
 
     corpo_html = ""
     for p in texto_gerado.split('\n'):
@@ -92,7 +96,7 @@ def executar():
         blogId=BLOG_ID,
         body={"title": tema_escolhido.title(), "content": html_final, "labels": ["Saúde", "Bem-Estar"], "status": "LIVE"}
     ).execute()
-    print("✅ SUCESSO! Post publicado.")
+    print(f"✅ SUCESSO! Post sobre '{tema_escolhido}' publicado.")
 
 if __name__ == "__main__":
     executar()
