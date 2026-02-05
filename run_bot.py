@@ -13,7 +13,7 @@ try:
 except ImportError:
     BLOCO_FIXO_FINAL = ""
 
-# 2. CONFIGURAÇÕES (Usando a chave MD Emagreca ...tRBY)
+# 2. CONFIGURAÇÕES
 BLOG_ID = "5251820458826857223"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
@@ -49,14 +49,13 @@ def executar():
         temas = [l.strip() for l in f.readlines() if l.strip()]
     
     tema = random.choice(temas)
-    print(f"🚀 Postagem Refinada: {tema}")
+    print(f"🚀 Postagem de Design Final: {tema}")
 
-    # 3. GERAÇÃO DE CONTEÚDO (Prompt focado em estrutura limpa)
     try:
         prompt_editorial = (
             f"Escreva um artigo de 800 palavras sobre {tema} para o blog 'Emagrecer com Saúde'.\n"
-            "ESTRUTURA: Use APENAS texto simples. Use 'SUBTITULO:' antes de cada subtítulo.\n"
-            "REGRAS: Sem símbolos '#', sem introduções da IA, comece direto no título."
+            "ESTRUTURA: Use obrigatoriamente a palavra 'SUBTÍTULO:' no início de cada subtítulo.\n"
+            "REGRAS: Sem símbolos '#', sem introduções, comece direto no título."
         )
         
         response = client.models.generate_content(
@@ -72,39 +71,31 @@ def executar():
     cor_base = "#003366"
     fotos = buscar_fotos(tema)
     
-    # Tratamento de parágrafos para reduzir o espaçamento (margin: 8px)
-    linhas = texto_raw.split('\n')
-    corpo_html = ""
+    # Processamento linha a linha para garantir formatação em TODOS os subtítulos
+    linhas = [l.strip() for l in texto_raw.split('\n') if l.strip()]
+    paragrafos_html = []
     
     for linha in linhas:
-        linha = linha.strip()
-        if not linha: continue
-        
-        if "SUBTITULO:" in linha or linha.isupper():
-            titulo_limpo = linha.replace("SUBTITULO:", "").strip()
-            corpo_html += f"<p style='color:{cor_base}; font-size:large; font-weight:bold; text-align:left; margin-top:20px; margin-bottom:5px;'>{titulo_limpo}</p>"
+        # Verifica se é um subtítulo (pela tag ou se está em caixa alta)
+        if "SUBTÍTULO:" in linha.upper() or (len(linha) < 60 and linha.isupper()):
+            texto_limpo = linha.replace("SUBTÍTULO:", "").replace("Subtítulo:", "").strip()
+            paragrafos_html.append(f"<p style='color:{cor_base}; font-size:large; font-weight:bold; text-align:left; margin:25px 0 5px 0;'>{texto_limpo}</p>")
         else:
-            corpo_html += f"<p style='color:{cor_base}; font-size:medium; text-align:justify; margin: 8px 0;'>{linha}</p>"
+            paragrafos_html.append(f"<p style='color:{cor_base}; font-size:medium; text-align:justify; margin:10px 0;'>{linha}</p>")
 
-    # Inserção da segunda imagem no meio
-    paragrafos_lista = corpo_html.split('</p>')
-    meio = len(paragrafos_lista) // 2
-    parte_1 = "</p>".join(paragrafos_lista[:meio]) + "</p>"
-    parte_2 = "</p>".join(paragrafos_lista[meio:])
-    
-    imagem_meio = f"<div style='text-align:center; margin:20px 0;'><img src='{fotos[1]}' style='width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:10px;'/></div>"
+    # Divisão para as duas imagens
+    meio = len(paragrafos_html) // 2
+    imagem_1 = f"<div style='text-align:center; margin-bottom:20px;'><img src='{fotos[0]}' style='width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:10px;'/></div>"
+    imagem_2 = f"<div style='text-align:center; margin:30px 0;'><img src='{fotos[1]}' style='width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:10px;'/></div>"
 
     html_final = f"""
-    <div style='font-family:Arial;'>
-        <h1 style='color:{cor_base}; text-align:center; font-size:x-large; font-weight:bold;'>{tema.upper()}</h1>
-        <div style='text-align:center; margin-bottom:20px;'>
-            <img src='{fotos[0]}' style='width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:10px;'/>
-        </div>
-        {parte_1}
-        {imagem_meio}
-        {parte_2}
-        <br/>
-        <div style='color:{cor_base};'>{BLOCO_FIXO_FINAL}</div>
+    <div style='font-family:Arial; color:{cor_base};'>
+        <h1 style='text-align:center; font-size:x-large; font-weight:bold; margin-bottom:20px;'>{tema.upper()}</h1>
+        {imagem_1}
+        {"".join(paragrafos_html[:meio])}
+        {imagem_2}
+        {"".join(paragrafos_html[meio:])}
+        <div style='margin-top:20px;'>{BLOCO_FIXO_FINAL}</div>
     </div>
     """
 
@@ -116,7 +107,7 @@ def executar():
             blogId=BLOG_ID, 
             body={"title": tema.title(), "content": html_final, "status": "LIVE"}
         ).execute()
-        print(f"✅ SUCESSO! Postagem '{tema}' publicada com cores e fontes corrigidas.")
+        print(f"✅ SUCESSO! Postagem '{tema}' publicada com formatação 100% corrigida.")
     except Exception as e:
         print(f"❌ Erro ao publicar: {e}")
 
