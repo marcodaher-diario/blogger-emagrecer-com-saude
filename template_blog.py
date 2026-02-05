@@ -50,10 +50,10 @@ def obter_esqueleto_html(dados):
             {dados['texto_conclusao']}
         </div>
 
-        <div style="background-color: #f0f4f8; border-radius: 10px; border: 1px dashed {cor_base}; margin: 30px 0px; padding: 20px; text-align: center;">
-            <p style="font-weight: bold; margin-bottom: 15px;">🚀 Gostou deste conteúdo? Não guarde só para você!</p>
+        <div style='background-color: #f0f4f8; border-radius: 10px; padding: 20px; margin: 30px 0; text-align: center; border: 1px dashed {cor_base};'>
+            <p style='font-weight: bold; margin-bottom: 15px;'>🚀 Gostou deste conteúdo? Não guarde só para você!</p>
             
-            <a href="{link_wa}" style="background-color: #25d366; border-radius: 5px; color: white; display: inline-block; font-weight: bold; margin-bottom: 10px; padding: 10px 20px; text-decoration: none;" target="_blank">
+            <a href='{link_wa}' target='_blank' style='background-color: #25D366; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block; margin-bottom: 10px;'>
                 Compartilhar no WhatsApp
             </a>
             
