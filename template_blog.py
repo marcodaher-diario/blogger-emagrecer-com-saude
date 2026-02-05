@@ -61,4 +61,4 @@ def obter_esqueleto_html(dados):
                 Acompanhe mais dicas e novidades em nossa <b>Rede de Conhecimento MD</b> logo abaixo.</p></div>
     </div><div>{dados['assinatura']}</div><div>
     """
-    return html</div>
+    return html
