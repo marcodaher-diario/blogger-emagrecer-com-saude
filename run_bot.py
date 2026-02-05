@@ -72,8 +72,9 @@ def buscar_fotos_aleatorias(tema, quantidade=2):
             pool_fotos.append(foto['src']['large2x'])
     except: pass
     
+    # CORREÇÃO: random.sample usa o argumento 'k' e não 'quantity'
     if len(pool_fotos) >= quantidade:
-        return random.sample(pool_fotos, quantity=quantidade)
+        return random.sample(pool_fotos, k=quantidade)
     return ["https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg"] * quantidade
 
 def executar():
@@ -97,7 +98,7 @@ def executar():
             config={'response_mime_type': 'application/json'}
         )
         
-        # TRATAMENTO DE ERRO: Garante que 'conteudo' seja um dicionário, mesmo que venha em lista
+        # Garante que 'conteudo' seja um dicionário, mesmo que venha em lista
         res_data = json.loads(response.text)
         conteudo = res_data[0] if isinstance(res_data, list) else res_data
 
