@@ -7,7 +7,7 @@ from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
-# 1. PRESERVADO: Sua assinatura oficial
+# 1. PRESERVADO: Sua assinatura oficial do configuracoes.py
 try:
     from configuracoes import BLOCO_FIXO_FINAL
 except ImportError:
@@ -18,11 +18,8 @@ BLOG_ID = "5251820458826857223"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
 
-# INICIALIZAÇÃO: Forçamos a 'v1' para evitar o erro 404 da 'v1beta'
-client = genai.Client(
-    api_key=GEMINI_API_KEY,
-    http_options={'api_version': 'v1'}
-)
+# Inicialização conforme a nova documentação de Jan/2026
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 def renovar_token():
     with open("token.json", "r") as f:
@@ -51,24 +48,23 @@ def executar():
         temas = [l.strip() for l in f.readlines() if l.strip()]
     
     tema = random.choice(temas)
-    print(f"🚀 Tentativa final para: {tema}")
+    print(f"🚀 Usando Gemini 3 Flash para: {tema}")
 
-    # 3. GERAÇÃO DE CONTEÚDO
+    # 3. GERAÇÃO DE CONTEÚDO (Nome do modelo atualizado conforme Jan/2026)
     try:
-        # Usamos o modelo indicado no seu manual (gemini-2.0-flash) ou o estável 1.5
         response = client.models.generate_content(
-            model="gemini-1.5-flash", 
+            model="gemini-3-flash-preview", 
             contents=f"Escreva um artigo de 700 palavras sobre {tema} para o blog Emagrecer com Saúde. Use tom motivador, fonte Arial e subtítulos H2."
         )
         texto_gerado = response.text
     except Exception as e:
-        print(f"Erro na IA: {e}")
+        print(f"Erro na IA (Modelo 3 Flash): {e}")
         return
 
     texto_formatado = texto_gerado.replace('\n', '<br/>')
     img = buscar_foto(tema)
     
-    # 4. MONTAGEM DO HTML (16:9 e Assinatura)
+    # 4. MONTAGEM DO HTML (Regra 16:9 e Assinatura Preservada)
     html_final = f"""
     <div style='font-family:Arial; text-align:justify;'>
         <h1 style='text-align:center;'>{tema.upper()}</h1>
@@ -89,7 +85,7 @@ def executar():
             blogId=BLOG_ID, 
             body={"title": tema.title(), "content": html_final, "status": "LIVE"}
         ).execute()
-        print(f"✅ SUCESSO! Artigo '{tema}' publicado no Blogger.")
+        print(f"✅ SUCESSO! Artigo '{tema}' publicado com Gemini 3.")
     except Exception as e:
         print(f"❌ Erro ao publicar: {e}")
 
