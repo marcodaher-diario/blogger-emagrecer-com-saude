@@ -30,31 +30,35 @@ def renovar_token():
             f.write(creds.to_json())
     return creds
 
-def buscar_fotos(tema, quantidade=2):
-    url = f"https://api.pexels.com/v1/search?query={tema}&orientation=landscape&per_page={quantidade}"
+def buscar_fotos_aleatorias(tema, quantidade=2):
+    """Busca um pool de 15 fotos e sorteia 2 para evitar repetição."""
+    url = f"https://api.pexels.com/v1/search?query={tema}&orientation=landscape&per_page=15"
     headers = {"Authorization": PEXELS_API_KEY}
-    fotos = []
+    pool_fotos = []
     try:
         r = requests.get(url, headers=headers).json()
         for foto in r.get('photos', []):
-            fotos.append(foto['src']['large2x'])
+            pool_fotos.append(foto['src']['large2x'])
     except:
         pass
-    while len(fotos) < quantidade:
-        fotos.append("https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg")
-    return fotos
+    
+    # Se a busca funcionar, sorteia da lista. Se não, usa o backup.
+    if len(pool_fotos) >= quantidade:
+        return random.sample(pool_fotos, quantidade)
+    
+    return ["https://images.pexels.com/photos/1640777/pexels-photo-1640777.jpeg"] * quantidade
 
 def executar():
     with open("temas.txt", "r", encoding="utf-8") as f:
         temas = [l.strip() for l in f.readlines() if l.strip()]
     
     tema = random.choice(temas)
-    print(f"🚀 Postagem de Design Final: {tema}")
+    print(f"🚀 Agendamento Confirmado: Postagem sobre {tema}")
 
     try:
         prompt_editorial = (
             f"Escreva um artigo de 800 palavras sobre {tema} para o blog 'Emagrecer com Saúde'.\n"
-            "ESTRUTURA: Use obrigatoriamente a palavra 'SUBTÍTULO:' no início de cada subtítulo.\n"
+            "ESTRUTURA: Use a palavra 'SUBTÍTULO:' no início de cada subtítulo.\n"
             "REGRAS: Sem símbolos '#', sem introduções, comece direto no título."
         )
         
@@ -67,23 +71,20 @@ def executar():
         print(f"Erro na IA: {e}")
         return
 
-    # 4. MONTAGEM DO HTML COM ESTILOS RÍGIDOS (#003366)
+    # 4. MONTAGEM DO HTML (#003366)
     cor_base = "#003366"
-    fotos = buscar_fotos(tema)
+    fotos = buscar_fotos_aleatorias(tema) # Agora com sorteio de pool
     
-    # Processamento linha a linha para garantir formatação em TODOS os subtítulos
     linhas = [l.strip() for l in texto_raw.split('\n') if l.strip()]
     paragrafos_html = []
     
     for linha in linhas:
-        # Verifica se é um subtítulo (pela tag ou se está em caixa alta)
         if "SUBTÍTULO:" in linha.upper() or (len(linha) < 60 and linha.isupper()):
             texto_limpo = linha.replace("SUBTÍTULO:", "").replace("Subtítulo:", "").strip()
             paragrafos_html.append(f"<p style='color:{cor_base}; font-size:large; font-weight:bold; text-align:left; margin:25px 0 5px 0;'>{texto_limpo}</p>")
         else:
             paragrafos_html.append(f"<p style='color:{cor_base}; font-size:medium; text-align:justify; margin:10px 0;'>{linha}</p>")
 
-    # Divisão para as duas imagens
     meio = len(paragrafos_html) // 2
     imagem_1 = f"<div style='text-align:center; margin-bottom:20px;'><img src='{fotos[0]}' style='width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:10px;'/></div>"
     imagem_2 = f"<div style='text-align:center; margin:30px 0;'><img src='{fotos[1]}' style='width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:10px;'/></div>"
@@ -99,7 +100,6 @@ def executar():
     </div>
     """
 
-    # 5. PUBLICAÇÃO
     try:
         creds = renovar_token()
         service = build("blogger", "v3", credentials=creds)
@@ -107,7 +107,7 @@ def executar():
             blogId=BLOG_ID, 
             body={"title": tema.title(), "content": html_final, "status": "LIVE"}
         ).execute()
-        print(f"✅ SUCESSO! Postagem '{tema}' publicada com formatação 100% corrigida.")
+        print(f"✅ SUCESSO! Post agendado para a próxima segunda.")
     except Exception as e:
         print(f"❌ Erro ao publicar: {e}")
 
