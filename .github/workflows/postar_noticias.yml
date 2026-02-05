@@ -1,5 +1,4 @@
-name: Bot Diario de Noticias
-
+name: Bot Emagrecer com Saúde
 on:
   schedule:
     - cron: '0 12 * * 1'
@@ -27,7 +26,7 @@ jobs:
           pip install google-auth google-api-python-client google-auth-oauthlib
           pip install openai
 
-      - name: Rodar Bot de Noticias
+      - name: Rodar Bot Emagrecer com Saúde
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: python run_bot.py
