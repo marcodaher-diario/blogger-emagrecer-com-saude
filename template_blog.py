@@ -1,5 +1,3 @@
-
-
 def obter_esqueleto_html(dados):
     cor_base = "#003366"  # Azul Marinho MD
     link_wa = f"https://api.whatsapp.com/send?text=Olha que artigo interessante que li no blog do Marco Daher: {dados['titulo']} - Confira aqui!"
