@@ -1,11 +1,8 @@
 def obter_esqueleto_html(dados):
     cor_base = "#003366"  # Azul Marinho MD
-    link_wa = f"https://api.whatsapp.com/send?text=Olha que artigo interessante que li no blog do Marco Daher: {dados['titulo']} - Confira aqui!"
-    
+       
     html = f"""
-    Template
-
-<div style="color: {cor_base}; font-family: Arial, sans-serif; line-height: 1.6;">
+    <div style="color: {cor_base}; font-family: Arial, sans-serif; line-height: 1.6;">
         <h1 style="font-weight: bold; margin-bottom: 20px; text-align: center; font-size: x-large;">
             {dados['titulo'].upper()}
         </h1>
@@ -50,10 +47,9 @@ def obter_esqueleto_html(dados):
             {dados['texto_conclusao']}
         </div>
 
-        <div style='margin-top:20px; border-top: 1px solid #eee; padding-top: 10px;'>
+        <div style='margin-top: 10px; padding-top: 0;'>
             {dados['assinatura']}
         </div>
     </div>
-
     """
     return html
