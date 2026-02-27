@@ -44,10 +44,7 @@ Entregue apenas o título final.
 
        texto = response.text.strip().replace('"', '')
         
-       # Converter markdown **texto** para HTML <strong>texto</strong>
-       texto = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", texto)
-        
-       return texto
+       return response.text.strip().replace('"', '')
 
     # ==========================================================
     # GERAR ARTIGO COMPLETO
