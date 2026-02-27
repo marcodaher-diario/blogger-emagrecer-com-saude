@@ -41,7 +41,7 @@ Entregue apenas o título final.
             contents=prompt
         )
 
-    return response.text.strip().replace('"', '')
+        return response.text.strip().replace('"', '')
 
     # ==========================================================
     # GERAR ARTIGO COMPLETO
