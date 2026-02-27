@@ -41,6 +41,11 @@ Entregue apenas o título final.
             contents=prompt
         )
 
+        import re
+
+        # Converter markdown **texto** para HTML <strong>texto</strong>
+        texto = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", texto)
+
         return response.text.strip().replace('"', '')
 
     # ==========================================================
