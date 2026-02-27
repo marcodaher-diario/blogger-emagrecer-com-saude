@@ -41,12 +41,14 @@ Entregue apenas o título final.
             contents=prompt
         )
 
-        import re
+       import re
 
+        texto = response.text.strip().replace('"', '')
+        
         # Converter markdown **texto** para HTML <strong>texto</strong>
         texto = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", texto)
-
-        return response.text.strip().replace('"', '')
+        
+        return texto
 
     # ==========================================================
     # GERAR ARTIGO COMPLETO
