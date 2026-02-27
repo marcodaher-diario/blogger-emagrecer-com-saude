@@ -7,6 +7,9 @@ def obter_esqueleto_html(dados):
     texto_completo = dados.get("texto_completo", "")
     assinatura = dados.get("assinatura", "")
 
+    # Tratamento fora da f-string (evita erro de backslash)
+    texto_formatado = texto_completo.replace("\n", "<br><br>")
+
     FONTE_GERAL = "Arial, sans-serif"
     COR_MD = "rgb(7, 55, 99)"
 
@@ -26,7 +29,7 @@ def obter_esqueleto_html(dados):
     </div>
 
     <div style="font-size:18px;">
-        {texto_completo.replace("\n", "<br><br>")}
+        {texto_formatado}
     </div>
 
     <div style="margin-top:40px;">
