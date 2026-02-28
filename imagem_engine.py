@@ -170,7 +170,7 @@ class ImageEngine:
 
     def obter_imagem(self, titulo):
 
-        query = f"weight loss fitness healthy lifestyle nutrition body transformation {titulo}"
+        query = f"weight loss, fitness, nutritional, wholesome, healthy, lifestyle, nutrition, body transformation, {titulo}"
 
         # 1️⃣ Pexels
         img = self._buscar_pexels(query)
