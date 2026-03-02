@@ -101,23 +101,33 @@ def registrar_tema(titulo):
 # GERAR TAGS SEO
 # ==========================================================
 
-def gerar_tags_seo(titulo):
-
-    palavras = titulo.lower().split()
+def gerar_tags_seo(titulo, texto):
+    stopwords = ["com", "de", "do", "da", "em", "para", "um", "uma", "os", "as", "que", "no", "na", "ao", "aos"]
+    conteudo = f"{titulo} {texto[:100]}"
+    palavras = re.findall(r'\b\w{4,}\b', conteudo.lower())
     tags = []
 
     for p in palavras:
-        p = p.strip(",.:-")
-        if len(p) > 3 and p not in tags:
+        if p not in stopwords and p not in tags:
             tags.append(p.capitalize())
-
-    tags_fixas = ["Emagrecimento", "Saúde", "Vida Saudável", "Marco Daher"]
+    
+    tags_fixas = ["Finanças", "Investimentos", "Marco Daher"]
 
     for tf in tags_fixas:
         if tf not in tags:
             tags.append(tf)
 
-    return tags[:10]
+    resultado = []
+    tamanho_atual = 0
+
+    for tag in tags:
+        if tamanho_atual + len(tag) + 2 <= 200:
+            resultado.append(tag)
+            tamanho_atual += len(tag) + 2
+        else:
+            break
+
+    return resultado
 
 
 # ==========================================================
