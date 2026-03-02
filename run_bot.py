@@ -23,7 +23,7 @@ from template_blog import obter_esqueleto_html
 
 
 # ==========================================================
-# UTILIDADES DE TEMPO
+# UTILIDADES DE TEMPO - EMAGRECER
 # ==========================================================
 
 def obter_horario_brasilia():
@@ -40,7 +40,7 @@ def dentro_da_janela(min_atual, min_agenda):
 
 
 # ==========================================================
-# CONTROLE DE AGENDAMENTO
+# CONTROLE DE AGENDAMENTO - EMAGRECER
 # ==========================================================
 
 def ja_postou(data_str, horario):
@@ -61,7 +61,7 @@ def registrar_postagem(data_str, horario):
 
 
 # ==========================================================
-# CONTROLE DE TEMA
+# CONTROLE DE TEMA - EMAGRECER
 # ==========================================================
 
 def tema_usado_recentemente(titulo):
@@ -98,7 +98,7 @@ def registrar_tema(titulo):
 
 
 # ==========================================================
-# GERAR TAGS SEO
+# GERAR TAGS SEO - GERAL
 # ==========================================================
 
 def gerar_tags_seo(titulo, texto):
@@ -131,7 +131,7 @@ def gerar_tags_seo(titulo, texto):
 
 
 # ==========================================================
-# EXECUÇÃO PRINCIPAL
+# EXECUÇÃO PRINCIPAL - EMAGRECER
 # ==========================================================
 
 if __name__ == "__main__":
