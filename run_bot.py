@@ -165,7 +165,7 @@ if __name__ == "__main__":
             body={
                 "title": titulo,
                 "content": html,
-                "labels": gerar_tags_seo(titulo)
+                "labels": gerar_tags_seo(titulo, texto)
             },
             isDraft=True
         ).execute()
