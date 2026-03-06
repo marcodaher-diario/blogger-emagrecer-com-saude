@@ -39,19 +39,31 @@ def obter_esqueleto_html(dados):
     imagem = dados.get("imagem", "")
     texto_completo = dados.get("texto_completo", "")
     assinatura = dados.get("assinatura", "")
+    link_post = dados.get("link", "#")
 
     conteudo_formatado = formatar_texto(texto_completo)
 
     html = f"""
 <style>
-    h3.post-title, .post-title {{ display: none !important; }}
+    h3.post-title, .post-title {{ 
+        display: none !important; }}
+        visibility: hidden !important; 
+        height: 0 !important; 
+        margin: 0 !important; 
+        padding: 0 !important;
+    }}
 </style>
+
+
 <div style="max-width:900px !important; margin:auto !important; font-family:Arial, sans-serif !important; 
             color:rgb(7, 55, 99) !important; line-height:1.7 !important; text-align:justify !important;">
 
-    <h1 style="text-align:center !important; font-size:28px !important; font-weight:bold !important; 
-               margin-bottom:20px !important; text-transform:uppercase !important;">
-        {titulo}
+    <h1 style="text-align:center !important; margin-bottom:20px !important;">
+        <a href="{link_post}" style="color:rgb(7, 55, 99) !important; text-decoration:none !important; 
+                                     font-size:28px !important; font-weight:bold !important; 
+                                     text-transform:uppercase !important; font-family:Arial !important;">
+            {titulo}
+        </a>
     </h1>
 
     <div style="text-align:center !important; margin-bottom:25px !important;">
