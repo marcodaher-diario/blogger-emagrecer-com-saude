@@ -60,63 +60,58 @@ class ImageEngine:
     # NOVO: GERAÇÃO POR INTELIGÊNCIA ARTIFICIAL (IMAGEN 4.0)
     # ==========================================================
 
-   def _gerar_imagem_ia(self, titulo):
-        """
-        Tenta gerar uma imagem 16:9 percorrendo uma lista de modelos de IA.
-        Se todos falharem, retorna None para seguir o fluxo original (Pexels/Unsplash).
-        """
-        if not self.gemini_key:
+    def _gerar_imagem_ia(self, titulo):
+            """
+            Tenta gerar uma imagem 16:9 percorrendo uma lista de modelos de IA.
+            """
+            if not self.gemini_key:
+                return None
+    
+            # Lista baseada nos modelos que aparecem na sua cota de 2026
+            modelos_imagem_fallback = [
+                "imagen-4.0-generate-001",
+                "imagen-4.0-fast-generate-001",
+                "gemini-3.1-flash-image-preview",
+                "gemini-2.5-flash-image"
+            ]
+    
+            prompt_ia = (
+                f"Professional high-quality blog photography about {titulo}. "
+                "Themes: healthy lifestyle, fitness, nutrition, body transformation. "
+                "Cinematic lighting, photorealistic, 8k resolution, no text, no watermarks."
+            )
+    
+            print("\n--- Iniciando Ciclo de IA para Imagem ---")
+    
+            for modelo in modelos_imagem_fallback:
+                try:
+                    print(f"Tentando modelo de imagem: {modelo}...")
+                    
+                    response = self.client_genai.models.generate_images(
+                        model=modelo,
+                        prompt=prompt_ia,
+                        config={
+                            "aspect_ratio": "16:9",
+                            "number_of_images": 1,
+                            "output_mime_type": "image/jpeg"
+                        }
+                    )
+    
+                    if response and hasattr(response, 'generated_images') and response.generated_images:
+                        img_url = response.generated_images[0].image_url
+                        print(f"✅ SUCESSO: Imagem gerada com {modelo}.")
+                        self._registrar_imagem(img_url)
+                        return img_url
+    
+                except Exception as e:
+                    if "404" in str(e):
+                        print(f"⚠️ Modelo {modelo} não encontrado. Pulando...")
+                    else:
+                        print(f"⚠️ Erro no modelo {modelo}: {e}")
+                    continue
+    
+            print("--- Todos os modelos de IA falharam. Migrando para Bancos de Imagens ---")
             return None
-
-        # Lista de modelos de imagem baseada na sua cota real (2026)
-        modelos_imagem_fallback = [
-            "imagen-4.0-generate-001",           # Topo de linha (Qualidade Máxima)
-            "imagen-4.0-fast-generate-001",      # Mais rápido, menor latência
-            "gemini-3.1-flash-image-preview",    # Multimodal nativo
-            "gemini-2.5-flash-image"             # Ultra estável
-        ]
-
-        prompt_ia = (
-            f"Professional high-quality blog photography about {titulo}. "
-            "Themes: healthy lifestyle, fitness, nutrition, body transformation. "
-            "Cinematic lighting, photorealistic, 8k resolution, no text, no watermarks."
-        )
-
-        print(f"--- Iniciando Ciclo de IA para Imagem ---")
-
-        for modelo in modelos_imagem_fallback:
-            try:
-                print(f"Tentando modelo de imagem: {modelo}...")
-                
-                response = self.client_genai.models.generate_images(
-                    model=modelo,
-                    prompt=prompt_ia,
-                    config={
-                        "aspect_ratio": "16:9",
-                        "number_of_images": 1,
-                        "output_mime_type": "image/jpeg"
-                    }
-                )
-
-                if response and hasattr(response, 'generated_images') and response.generated_images:
-                    img_url = response.generated_images[0].image_url
-                    print(f"✅ SUCESSO: Imagem gerada com {modelo}.")
-                    self._registrar_imagem(img_url)
-                    return img_url
-
-            except exceptions.ResourceExhausted:
-                print(f"⚠️ Cota esgotada para o modelo {modelo}. Tentando o próximo...")
-                continue
-            except Exception as e:
-                # Se for 404, o modelo não está disponível na sua conta/região
-                if "404" in str(e):
-                    print(f"❌ Modelo {modelo} não encontrado ou sem permissão. Pulando...")
-                else:
-                    print(f"❌ Erro no modelo {modelo}: {e}")
-                continue
-
-        print("--- Todos os modelos de IA falharam. Migrando para Bancos de Imagens ---")
-        return None
     # ==========================================================
     # BUSCA PEXELS
     # ==========================================================
