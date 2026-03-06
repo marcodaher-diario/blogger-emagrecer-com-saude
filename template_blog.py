@@ -44,33 +44,16 @@ def obter_esqueleto_html(dados):
 
     html = f"""
 <style>
-    /* 1. ESTILIZA O H3 NATIVO PARA PARECER O SEU H1 */
-    h3.post-title, .post-title, .entry-title {{
-        display: block !important;
-        visibility: visible !important;
-        text-align: center !important;
-        margin-bottom: 20px !important;
-    }}
-
-    /* 2. ESTILIZA O LINK DENTRO DO H3 */
-    h3.post-title a, .post-title a, .entry-title a {{
-        color: rgb(7, 55, 99) !important;
-        text-decoration: none !important;
-        font-size: 28px !important;
-        font-weight: bold !important;
-        text-transform: uppercase !important;
-        font-family: Arial !important;
-    }}
-
-    /* 3. EVITA QUE O LINK MUDE DE COR AO SER CLICADO OU AO PASSAR O MOUSE */
-    h3.post-title a:visited, .post-title a:hover, .post-title a:active {{
-        color: rgb(7, 55, 99) !important;
-        text-decoration: none !important;
-    }}
+    h3.post-title, .post-title {{ style="text-align:center !important; font-size:28px !important; font-weight:bold !important; 
+               margin-bottom:20px !important; text-transform:uppercase !important; }}
 </style>
-
 <div style="max-width:900px !important; margin:auto !important; font-family:Arial, sans-serif !important; 
             color:rgb(7, 55, 99) !important; line-height:1.7 !important; text-align:justify !important;">
+
+     <h1 style="text-align:center !important; font-size:28px !important; font-weight:bold !important; 
+               margin-bottom:20px !important; text-transform:uppercase !important;">
+        {titulo}
+    </h1> 
 
     <div style="text-align:center !important; margin-bottom:25px !important;">
         <img src="{imagem}" 
