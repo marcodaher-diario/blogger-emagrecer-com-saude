@@ -5,7 +5,7 @@ def formatar_texto(texto):
     html_final = ""
     
     COR_MD = "rgb(7, 55, 99)"
-    TAMANHO_H2 = "22px"
+    TAMANHO_H2 = "20px"
     TAMANHO_TEXTO = "18px"
 
     for linha in linhas:
