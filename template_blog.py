@@ -13,7 +13,6 @@ def formatar_texto(texto):
         linha_limpa = linha.strip("#* ").strip()
 
         if e_titulo or (len(linha_limpa.split()) <= 18 and not linha_limpa.endswith(".")):
-
             html_final += f"""
             <h2 style="text-align:left !important; font-family:Arial !important; color:{COR_MD} !important; 
                        font-size:{TAMANHO_H2} !important; font-weight:bold !important; 
@@ -44,12 +43,23 @@ def obter_esqueleto_html(dados):
 
     html = f"""
 <style>
-    h3.post-title, .post-title {{ style="text-align:center !important; font-size:28px !important; font-weight:bold !important; 
-               margin-bottom:20px !important; text-transform:uppercase !important;"}}
-        {titulo} 
+    h3.post-title, .post-title {{ 
+        text-align:center !important; 
+        font-size:28px !important; 
+        font-weight:bold !important; 
+        margin-bottom:20px !important; 
+        text-transform:uppercase !important;
+        color:rgb(7, 55, 99) !important;
+        font-family:Arial, sans-serif !important;
+    }}
 </style>
+
 <div style="max-width:900px !important; margin:auto !important; font-family:Arial, sans-serif !important; 
             color:rgb(7, 55, 99) !important; line-height:1.7 !important; text-align:justify !important;">
+
+    <h3 class="post-title">
+        {titulo}
+    </h3>
 
     <div style="text-align:center !important; margin-bottom:25px !important;">
         <img src="{imagem}" 
