@@ -2,7 +2,10 @@
 
 import os
 import requests
+import time
 from datetime import datetime
+from google import genai  # Novo import para IA
+from google.api_core import exceptions
 from configuracoes import ARQUIVO_CONTROLE_IMAGENS, DIAS_BLOQUEIO_IMAGEM
 
 PASTA_ASSETS = "assets"
@@ -13,6 +16,10 @@ class ImageEngine:
     def __init__(self):
         self.pexels_key = os.getenv("PEXELS_API_KEY")
         self.unsplash_key = os.getenv("UNSPLASH_API_KEY")
+        # Inicialização do cliente Google GenAI para geração de imagens
+        self.gemini_key = os.getenv("GEMINI_API_KEY")
+        if self.gemini_key:
+            self.client_genai = genai.Client(api_key=self.gemini_key)
 
     # ==========================================================
     # CONTROLE DE REPETIÇÃO
@@ -48,6 +55,49 @@ class ImageEngine:
 
         with open(ARQUIVO_CONTROLE_IMAGENS, "a", encoding="utf-8") as f:
             f.write(f"{hoje}|{url}\n")
+
+    # ==========================================================
+    # NOVO: GERAÇÃO POR INTELIGÊNCIA ARTIFICIAL (IMAGEN 4.0)
+    # ==========================================================
+
+    def _gerar_imagem_ia(self, titulo):
+        """
+        Tenta gerar uma imagem 16:9 via IA baseada no título.
+        """
+        if not self.gemini_key:
+            return None
+
+        try:
+            print(f"Tentando gerar imagem por IA para: {titulo}...")
+            
+            # Prompt otimizado para o seu nicho (baseado na sua query original)
+            prompt_ia = (
+                f"Professional high-quality blog photography about {titulo}. "
+                "Themes: healthy lifestyle, fitness, nutrition, body transformation. "
+                "Cinematic lighting, photorealistic, 8k resolution, no text, no watermarks."
+            )
+
+            response = self.client_genai.models.generate_image(
+                model="imagen-3.0-generate-001", # Modelo estável de 2026
+                prompt=prompt_ia,
+                config={
+                    "aspect_ratio": "16:9",
+                    "number_of_images": 1,
+                    "output_mime_type": "image/jpeg"
+                }
+            )
+
+            if response.generated_images:
+                img_url = response.generated_images[0].image_url
+                print("Imagem IA gerada com sucesso.")
+                # Registramos para manter o histórico, embora IA gere imagens únicas
+                self._registrar_imagem(img_url)
+                return img_url
+
+        except Exception as e:
+            print(f"Falha na geração por IA: {e}. Seguindo para busca em bancos de imagens...")
+        
+        return None
 
     # ==========================================================
     # BUSCA PEXELS
@@ -165,11 +215,17 @@ class ImageEngine:
         return caminho
 
     # ==========================================================
-    # FUNÇÃO PRINCIPAL
+    # FUNÇÃO PRINCIPAL ADAPTADA
     # ==========================================================
 
     def obter_imagem(self, titulo):
 
+        # 0️⃣ Tenta gerar por IA primeiro (Nova Prioridade)
+        img_ia = self._gerar_imagem_ia(titulo)
+        if img_ia:
+            return img_ia
+
+        # Se a IA falhar ou não houver chave, segue o fluxo original:
         query = f"weight loss, fitness, nutritional, wholesome, healthy, lifestyle, nutrition, body transformation, {titulo}"
 
         # 1️⃣ Pexels
