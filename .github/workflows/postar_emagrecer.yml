@@ -44,14 +44,17 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           UNSPLASH_API_KEY: ${{ secrets.UNSPLASH_API_KEY }}
-          TEST_MODE: ${{ github.event.inputs.test_mode }}
-        run: python run_bot.py
+          # Ajuste para garantir que o valor não venha vazio no agendamento (cron)
+          TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
+        run: python -u run_bot.py
 
       - name: Commitar arquivos de controle automaticamente
         run: |
+          # Corrigido o e-mail (removido o colchete extra)
           git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
+          # Verifica e adiciona os arquivos de controle se existirem
           [ -f controle_agendamentos.txt ] && git add controle_agendamentos.txt
           [ -f controle_temas_usados.txt ] && git add controle_temas_usados.txt
           [ -f controle_imagens.txt ] && git add controle_imagens.txt
