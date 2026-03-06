@@ -63,7 +63,7 @@ class ImageEngine:
     def _gerar_imagem_ia(self, titulo):
         """
         Tenta gerar uma imagem 16:9 via IA baseada no título.
-        Corrigido para a estrutura oficial do SDK 2026.
+        Ajustado para o modelo EXATO disponível na sua lista (Imagen 4.0).
         """
         if not self.gemini_key:
             return None
@@ -77,11 +77,9 @@ class ImageEngine:
                 "Cinematic lighting, photorealistic, 8k resolution, no text, no watermarks."
             )
 
-            # CORREÇÃO AQUI: O caminho correto no SDK é client.models.imagen.generate_image
-            # ou client.imagen.generate_image dependendo da sub-versão instalada.
-            # No SDK 2026 padrão, usamos:
+            # Usando o modelo que apareceu na sua lista de modelos disponíveis
             response = self.client_genai.models.generate_images(
-                model="imagen-3.0-generate-001",
+                model="imagen-4.0-generate-001", 
                 prompt=prompt_ia,
                 config={
                     "aspect_ratio": "16:9",
@@ -92,12 +90,25 @@ class ImageEngine:
 
             if response and hasattr(response, 'generated_images') and response.generated_images:
                 img_url = response.generated_images[0].image_url
-                print("✅ Imagem IA gerada com sucesso.")
+                print("✅ Imagem IA gerada com sucesso via Imagen 4.0.")
                 self._registrar_imagem(img_url)
                 return img_url
 
         except Exception as e:
-            # Captura o erro para diagnóstico mas não trava o robô
+            # Se o Imagen 4.0 falhar por ser muito novo, tentamos o Gemini 3.1 Flash Image como último recurso de IA
+            if "404" in str(e):
+                try:
+                    print("Tentando alternativa: gemini-3.1-flash-image-preview...")
+                    response = self.client_genai.models.generate_images(
+                        model="gemini-3.1-flash-image-preview",
+                        prompt=prompt_ia,
+                        config={"aspect_ratio": "16:9"}
+                    )
+                    if response.generated_images:
+                        return response.generated_images[0].image_url
+                except:
+                    pass
+            
             print(f"❌ Falha na geração por IA: {e}. Seguindo para bancos de imagens...")
         
         return None
