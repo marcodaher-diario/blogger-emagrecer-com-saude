@@ -16,8 +16,8 @@ class GeminiEngine:
         # Estratégia de Fallback solicitada: 3 Modelos em 3 Ciclos
         self.modelos_fallback = [
             "gemini-3-flash-preview",
-            "gemini-1.5-pro-002", 
-            "gemini-1.5-flash-002"
+            "gemini-2.5-pro", 
+            "gemini-2.5-flash"
         ]
 
     def _limpar_e_formatar_markdown(self, texto):
