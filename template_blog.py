@@ -72,7 +72,7 @@ def obter_esqueleto_html(dados):
 <div style="max-width:900px !important; margin:auto !important; font-family:Arial, sans-serif !important;">
 
     <div style="text-align:center !important; margin-bottom:25px !important;">
-        <img src="{imagem}" style="width:100% !important; height:auto !important; display:block !important; margin:auto !important; border-radius:8px !important;">
+        <img src="{imagem}" alt="{titulo}" style="width:100% !important; height:auto !important; aspect-ratio:16/9 !important; object-fit:cover !important; border-radius:8px !important; display:block !important; margin:auto !important;">
     </div>
 
     <div>
