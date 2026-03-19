@@ -303,9 +303,14 @@ if __name__ == "__main__":
                 horario_escolhido = horario_agenda
                 break
 
-    if not horario_escolhido:
-    print("Fora da janela de postagem.")
-    exit()
+        if not horario_escolhido:
+
+            if os.getenv("FORCAR_POSTAGEM") == "true":
+                print("Fora da janela, mas FORÇANDO postagem...")
+                horario_escolhido = "FORCADO"
+            else:
+                print("Fora da janela de postagem. Nenhuma ação realizada.")
+                exit()
 
     gemini = GeminiEngine()
     imagem_engine = ImageEngine()
@@ -314,11 +319,18 @@ if __name__ == "__main__":
     categoria = random.choice(CATEGORIAS_EDITORIAIS)
 
     # Geração com bloqueio de repetição
-    for _ in range(5):
-        titulo = gemini.gerar_tema(categoria)
-        if not tema_usado_recentemente(titulo):
-            break
+    titulo = None
 
+    for _ in range(5):
+        tentativa = gemini.gerar_tema(categoria)
+        if not tema_usado_recentemente(tentativa):
+            titulo = tentativa
+            break
+    
+    if not titulo:
+        print("Nenhum tema novo encontrado, abortando para evitar repetição.")
+        exit()
+        
     texto = gemini.gerar_artigo(titulo, categoria)
     imagem = imagem_engine.obter_imagem(titulo)
 
