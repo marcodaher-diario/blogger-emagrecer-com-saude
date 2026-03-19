@@ -60,8 +60,8 @@ def obter_esqueleto_html(dados):
 .post-title, .entry-title {{ text-align:center!important; font-size:28px!important; text-transform:uppercase!important; font-weight:bold!important; margin:10px 0 25px 0!important; color:{cor}!important; }}
 .img-c {{ text-align:center; margin-bottom:25px; }}
 .img-p {{ width:100%; height:auto; aspect-ratio:16/9; object-fit:cover; border-radius:8px; }}
-.sub {{ font-size:22px!important; text-transform:uppercase!important; font-weight:bold!important; margin-top:25px!important; margin-bottom:10px!important; text-align:left!important; }}
-.txt {{ font-size:18px!important; text-align:justify!important; line-height:1.6!important; margin-bottom:15px!important; }}
+.sub {{ font-size:22px!important; text-transform:uppercase!important; font-weight:bold!important; margin-top:25px!important; margin-bottom:10px!important; text-align:left!important; color:{cor}!important; }}
+.txt {{ font-size:18px!important; text-align:justify!important; line-height:1.6!important; margin-bottom:15px!important; color:{cor}!important; }}
 .lst {{ margin-bottom:20px; padding-left:25px; }}
 .lst li {{ font-size:18px!important; margin-bottom:8px; }}
 </style>
