@@ -62,3 +62,4 @@
 2026-08-01|https://images.pexels.com/photos/31144007/pexels-photo-31144007.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940
 2026-08-08|https://images.pexels.com/photos/11412589/pexels-photo-11412589.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940
 2026-08-16|https://images.pexels.com/photos/11880122/pexels-photo-11880122.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940
+2026-08-18|https://images.pexels.com/photos/5966439/pexels-photo-5966439.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940
