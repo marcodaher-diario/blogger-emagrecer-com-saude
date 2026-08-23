@@ -59,7 +59,7 @@ class ImageEngine:
         params = {
             "query": query,
             "orientation": "landscape",
-            "per_page": 15, # Aumentei para ter mais opções de filtro
+            "per_page": 30, # Aumentei para ter mais opções de filtro
             "size": "large"
         }
 
@@ -92,7 +92,7 @@ class ImageEngine:
         params = {
             "query": query,
             "orientation": "landscape",
-            "per_page": 15,
+            "per_page": 30,
             "client_id": self.unsplash_key
         }
 
@@ -159,8 +159,24 @@ class ImageEngine:
         Monta uma query profissional e busca nos bancos de imagens gratuitos.
         """
         # Adicionando termos de estilo para evitar fotos com cara de "amadoras"
-        estilo_visual = "minimalist, professional photography, high-end, soft lighting, clean background"
-        nicho = "healthy lifestyle, fitness, nutrition"
+        estilo_visual = (
+            "professional editorial photography, premium health magazine style, "
+            "high-end commercial photography, photorealistic, natural skin texture, "
+            "soft diffused lighting, cinematic lighting, clean composition, "
+            "modern aesthetic, sophisticated, realistic details, subtle depth of field, "
+            "balanced colors, crisp focus, visually appealing, professional styling, "
+            "authentic lifestyle photography, no amateur look, no stock photo feel"
+        )
+        
+        nicho = (
+            "healthy lifestyle, health, wellness, nutrition, healthy eating, "
+            "balanced diet, weight management, fitness, exercise, body, "
+            "healthy foods, fruits, vegetables, whole foods, protein, vitamins, "
+            "minerals, supplements, recipes, healthy recipes, meal preparation, "
+            "food science, metabolism, digestion, gut health, hydration, "
+            "sleep, energy, longevity, healthy aging, preventive health, "
+            "mental wellness, active lifestyle, healthy habits"
+        )
         
         # Query refinada em inglês (Pexels e Unsplash funcionam muito melhor assim)
         query_profissional = f"{estilo_visual}, {nicho}, {titulo}"
