@@ -67,3 +67,4 @@
 2026-08-23|https://images.pexels.com/photos/1326098/pexels-photo-1326098.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940
 2026-08-23|https://images.pexels.com/photos/6642939/pexels-photo-6642939.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940
 2026-08-25|https://images.pexels.com/photos/6167443/pexels-photo-6167443.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940
+2026-09-02|https://images.pexels.com/photos/8093227/pexels-photo-8093227.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940
