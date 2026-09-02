@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import os
 import re
 import random
@@ -5,8 +7,6 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
 from configuracoes import (
@@ -17,820 +17,1513 @@ from configuracoes import (
     ARQUIVO_CONTROLE_AGENDAMENTO,
     ARQUIVO_CONTROLE_TEMAS,
     DIAS_BLOQUEIO_TEMA,
-    BLOCO_FIXO_FINAL,
+    BLOCO_FIXO_FINAL
 )
 
-
-# ============================================================
-# CONFIGURAÇÃO DE EXECUÇÃO
-# ============================================================
-
-# true  = TESTE / publicação forçada imediatamente
-# false = funcionamento normal conforme a agenda
-FORCAR_POSTAGEM = os.getenv("FORCAR_POSTAGEM", "false").lower()
+from gemini_engine import GeminiEngine
+from imagem_engine import ImageEngine
+from template_blog import obter_esqueleto_html
 
 
-# ============================================================
-# FUSO HORÁRIO
-# ============================================================
+# ==========================================================
+# CONFIGURAÇÕES LOCAIS
+# ==========================================================
 
 FUSO_BRASILIA = ZoneInfo("America/Sao_Paulo")
 
 
+# ==========================================================
+# CONTROLE DA JANELA DE POSTAGEM
+# ==========================================================
+
+try:
+    JANELA_POSTAGEM = int(
+        os.getenv(
+            "JANELA_POSTAGEM_MINUTOS",
+            str(max(JANELA_MINUTOS, 90))
+        )
+    )
+except ValueError:
+    JANELA_POSTAGEM = max(JANELA_MINUTOS, 90)
+
+
+# ==========================================================
+# VARIÁVEIS DE EXECUÇÃO
+# ==========================================================
+
+FORCAR_POSTAGEM = (
+    os.getenv("FORCAR_POSTAGEM", "false").lower()
+    == "true"
+)
+
+TEST_MODE = (
+    os.getenv("TEST_MODE", "false").lower()
+    == "true"
+)
+
+
+# ==========================================================
+# UTILIDADES DE TEMPO
+# ==========================================================
+
 def obter_horario_brasilia():
     """
-    Retorna a data/hora atual no horário de Brasília.
+    Retorna data e hora atuais no horário de Brasília.
     """
     return datetime.now(FUSO_BRASILIA)
 
 
-# ============================================================
-# CONVERSÃO DE HORÁRIO
-# ============================================================
-
-def horario_para_minutos(horario):
+def horario_para_minutos(hhmm):
     """
-    Converte HH:MM para quantidade de minutos desde 00:00.
+    Converte HH:MM para minutos desde meia-noite.
     """
-    hora, minuto = map(int, horario.split(":"))
-    return hora * 60 + minuto
+    h, m = map(int, hhmm.split(":"))
+    return h * 60 + m
 
 
-def diferenca_minutos(min1, min2):
+def diferenca_circular_minutos(min_atual, min_agenda):
     """
-    Retorna a diferença absoluta entre dois horários em minutos.
+    Calcula a menor distância entre dois horários considerando
+    a virada da meia-noite.
     """
-    return abs(min1 - min2)
 
+    diferenca = abs(
+        min_atual - min_agenda
+    )
 
-# ============================================================
-# CONTROLE DA AGENDA
-# ============================================================
+    return min(
+        diferenca,
+        1440 - diferenca
+    )
+
 
 def dentro_da_janela(min_atual, min_agenda):
     """
-    Verifica se o horário atual está dentro da janela
-    permitida em relação ao horário agendado.
+    Verifica se o horário atual está dentro da janela permitida.
     """
-    return diferenca_minutos(min_atual, min_agenda) <= JANELA_MINUTOS
+
+    return (
+        diferenca_circular_minutos(
+            min_atual,
+            min_agenda
+        )
+        <= JANELA_POSTAGEM
+    )
 
 
-def ja_postou(data, horario):
+# ==========================================================
+# CONTROLE DE AGENDAMENTO
+# ==========================================================
+
+def ja_postou(data_str, horario):
     """
-    Verifica se determinado horário da agenda já foi utilizado.
+    Verifica se determinado horário já foi utilizado naquele dia.
     """
-    if not os.path.exists(ARQUIVO_CONTROLE_AGENDAMENTO):
+
+    if not os.path.exists(
+        ARQUIVO_CONTROLE_AGENDAMENTO
+    ):
         return False
 
-    try:
-        with open(
-            ARQUIVO_CONTROLE_AGENDAMENTO,
-            "r",
-            encoding="utf-8"
-        ) as arquivo:
+    with open(
+        ARQUIVO_CONTROLE_AGENDAMENTO,
+        "r",
+        encoding="utf-8"
+    ) as f:
 
-            for linha in arquivo:
-                linha = linha.strip()
+        for linha in f:
 
-                if not linha:
-                    continue
+            linha = linha.strip()
 
-                partes = linha.split("|", 1)
+            if "|" not in linha:
+                continue
 
-                if len(partes) < 2:
-                    continue
+            partes = linha.split("|", 1)
 
-                data_registrada = partes[0].strip()
-                horario_registrado = partes[1].strip()
+            if len(partes) != 2:
+                continue
 
-                if (
-                    data_registrada == data
-                    and horario_registrado == horario
-                ):
-                    return True
+            data, hora = partes
 
-    except Exception as e:
-        print(f"Erro ao verificar controle de agendamento: {e}")
+            if (
+                data == data_str
+                and hora == horario
+            ):
+                return True
 
     return False
 
 
-def registrar_postagem(data, horario):
+def registrar_postagem(data_str, horario):
     """
-    Registra uma publicação realizada.
-    """
-    try:
-        with open(
-            ARQUIVO_CONTROLE_AGENDAMENTO,
-            "a",
-            encoding="utf-8"
-        ) as arquivo:
-
-            arquivo.write(f"{data}|{horario}\n")
-
-    except Exception as e:
-        print(f"Erro ao registrar postagem: {e}")
-
-
-def encontrar_horario_agenda():
-    """
-    Procura um horário da agenda que esteja dentro da janela
-    de publicação e ainda não tenha sido utilizado hoje.
-
-    Retorna:
-        horario_agenda
-        ou None
+    Registra a postagem realizada.
     """
 
-    agora = obter_horario_brasilia()
-
-    data_hoje = agora.strftime("%Y-%m-%d")
-    min_atual = agora.hour * 60 + agora.minute
-
-    horarios_validos = []
-
-    for horario_agenda in AGENDA_POSTAGENS:
-
-        min_agenda = horario_para_minutos(horario_agenda)
-
-        if dentro_da_janela(min_atual, min_agenda):
-
-            if not ja_postou(data_hoje, horario_agenda):
-
-                diferenca = diferenca_minutos(
-                    min_atual,
-                    min_agenda
-                )
-
-                horarios_validos.append(
-                    (diferenca, horario_agenda)
-                )
-
-    if not horarios_validos:
-        return None
-
-    horarios_validos.sort(key=lambda x: x[0])
-
-    return horarios_validos[0][1]
-
-
-# ============================================================
-# RECUPERAÇÃO DE PUBLICAÇÃO PERDIDA
-# ============================================================
-
-def encontrar_horario_atrasado():
-    """
-    Verifica se existe algum horário da agenda de hoje que
-    já passou e ainda não foi publicado.
-
-    Retorna o horário mais recente que foi perdido.
-
-    Isso permite que uma execução atrasada do GitHub Actions
-    ainda consiga realizar a publicação.
-    """
-
-    agora = obter_horario_brasilia()
-
-    data_hoje = agora.strftime("%Y-%m-%d")
-    min_atual = agora.hour * 60 + agora.minute
-
-    horarios_perdidos = []
-
-    for horario_agenda in AGENDA_POSTAGENS:
-
-        min_agenda = horario_para_minutos(horario_agenda)
-
-        # Só considera horários que já passaram
-        if min_agenda < min_atual:
-
-            if not ja_postou(data_hoje, horario_agenda):
-
-                atraso = min_atual - min_agenda
-
-                horarios_perdidos.append(
-                    (atraso, horario_agenda)
-                )
-
-    if not horarios_perdidos:
-        return None
-
-    # O mais recente horário perdido vem primeiro
-    horarios_perdidos.sort(key=lambda x: x[0])
-
-    return horarios_perdidos[0][1]
-
-
-# ============================================================
-# CONTROLE DE TEMAS
-# ============================================================
-
-def tema_usado_recentemente(tema):
-    """
-    Verifica se o tema já foi utilizado dentro do período
-    de bloqueio definido em DIAS_BLOQUEIO_TEMA.
-    """
-
-    if not os.path.exists(ARQUIVO_CONTROLE_TEMAS):
-        return False
-
-    agora = obter_horario_brasilia().replace(tzinfo=None)
-    limite = agora - timedelta(days=DIAS_BLOQUEIO_TEMA)
-
-    tema_normalizado = tema.strip().lower()
-
-    try:
-        with open(
-            ARQUIVO_CONTROLE_TEMAS,
-            "r",
-            encoding="utf-8"
-        ) as arquivo:
-
-            for linha in arquivo:
-
-                linha = linha.strip()
-
-                if not linha:
-                    continue
-
-                partes = linha.split("|", 1)
-
-                if len(partes) != 2:
-                    continue
-
-                data_texto = partes[0].strip()
-                tema_registrado = partes[1].strip()
-
-                try:
-                    data_registro = datetime.strptime(
-                        data_texto,
-                        "%Y-%m-%d %H:%M:%S"
-                    )
-
-                except ValueError:
-                    continue
-
-                if data_registro < limite:
-                    continue
-
-                if tema_registrado.lower() == tema_normalizado:
-                    return True
-
-    except Exception as e:
-        print(f"Erro ao verificar temas usados: {e}")
-
-    return False
-
-
-def registrar_tema(tema):
-    """
-    Registra o tema utilizado.
-    """
-
-    agora = obter_horario_brasilia().replace(tzinfo=None)
-
-    try:
-        with open(
-            ARQUIVO_CONTROLE_TEMAS,
-            "a",
-            encoding="utf-8"
-        ) as arquivo:
-
-            arquivo.write(
-                f"{agora.strftime('%Y-%m-%d %H:%M:%S')}|{tema}\n"
-            )
-
-    except Exception as e:
-        print(f"Erro ao registrar tema: {e}")
-
-
-# ============================================================
-# TAGS SEO
-# ============================================================
-
-def gerar_tags_seo(titulo, texto, categoria):
-    """
-    Gera tags SEO combinando:
-    - palavras do título
-    - expressões compostas
-    - entidades
-    - clusters editoriais
-    - categoria
-    - tags fixas
-
-    Limite:
-    - 15 tags
-    - 200 caracteres
-    """
-
-    clusters = {
-
-        "emagrecimento": [
-            "emagrecimento",
-            "emagrecer",
-            "perder peso",
-            "perda de peso",
-            "gordura corporal",
-            "gordura abdominal",
-            "controle do peso",
-            "peso saudável"
-        ],
-
-        "metabolismo": [
-            "metabolismo",
-            "metabolismo acelerado",
-            "metabolismo lento",
-            "taxa metabólica",
-            "metabólico",
-            "metabolica"
-        ],
-
-        "nutrição": [
-            "nutrição",
-            "nutricao",
-            "alimentação saudável",
-            "alimentação",
-            "nutrientes",
-            "proteína",
-            "proteina",
-            "fibras",
-            "vitaminas",
-            "minerais"
-        ],
-
-        "dietas": [
-            "dieta",
-            "dietas",
-            "dieta saudável",
-            "dieta para emagrecer",
-            "low carb",
-            "dieta mediterrânea",
-            "jejum",
-            "jejum intermitente"
-        ],
-
-        "calorias": [
-            "calorias",
-            "déficit calórico",
-            "deficit calorico",
-            "gasto calórico",
-            "calorias para emagrecer"
-        ],
-
-        "alimentos": [
-            "alimentos saudáveis",
-            "alimentos para emagrecer",
-            "alimentos nutritivos",
-            "comida saudável",
-            "ingredientes saudáveis"
-        ],
-
-        "receitas": [
-            "receitas saudáveis",
-            "receitas funcionais",
-            "receita saudável",
-            "receita para emagrecer",
-            "receitas para emagrecer"
-        ],
-
-        "exercícios": [
-            "exercício",
-            "exercicio",
-            "exercícios",
-            "atividade física",
-            "atividade",
-            "treino",
-            "treino para emagrecer",
-            "exercícios para emagrecer",
-            "movimentos"
-        ],
-
-        "saúde metabólica": [
-            "saúde metabólica",
-            "insulina",
-            "resistência à insulina",
-            "diabetes",
-            "colesterol",
-            "triglicerídeos",
-            "pressão arterial",
-            "glicemia"
-        ],
-
-        "saúde e bem-estar": [
-            "saúde",
-            "saúde e bem-estar",
-            "bem-estar",
-            "qualidade de vida",
-            "vida saudável",
-            "hábitos saudáveis"
-        ],
-
-        "sono": [
-            "sono",
-            "qualidade do sono",
-            "dormir bem",
-            "privação de sono",
-            "sono e emagrecimento"
-        ],
-
-        "estresse": [
-            "estresse",
-            "stress",
-            "estresse e emagrecimento",
-            "ansiedade alimentar",
-            "comer emocional"
-        ],
-
-        "sedentarismo": [
-            "sedentarismo",
-            "sedentário",
-            "ficar muito tempo sentado",
-            "atividade física",
-            "movimentação"
-        ],
-
-        "fome e apetite": [
-            "fome",
-            "apetite",
-            "controle do apetite",
-            "saciedade",
-            "fome emocional"
-        ],
-
-        "saúde digestiva": [
-            "saúde digestiva",
-            "digestão",
-            "intestino",
-            "flora intestinal",
-            "microbiota",
-            "constipação"
-        ],
-
-        "hormônios": [
-            "hormônios",
-            "hormônios do apetite",
-            "leptina",
-            "grelina",
-            "cortisol",
-            "insulina"
-        ],
-
-        "suplementos": [
-            "suplementos",
-            "suplementação",
-            "suplementos para emagrecer",
-            "vitaminas",
-            "minerais"
-        ],
-
-        "hábitos": [
-            "hábitos saudáveis",
-            "mudança de hábitos",
-            "rotina saudável",
-            "estilo de vida",
-            "qualidade de vida"
-        ]
-    }
-
-    entidades = [
-        "metabolismo",
-        "calorias",
-        "insulina",
-        "diabetes",
-        "colesterol",
-        "pressão",
-        "pressao",
-        "sedentarismo",
-        "termogênese",
-        "termogenese",
-        "fome",
-        "saciedade",
-        "microbiota",
-        "intestino",
-        "sono",
-        "estresse",
-        "cortisol",
-        "leptina",
-        "grelina",
-        "proteína",
-        "proteina",
-        "fibras",
-        "vitaminas",
-        "minerais"
-    ]
-
-    tags = []
-
-    def adicionar_tag(tag):
-        tag = tag.strip()
-
-        if not tag:
-            return
-
-        tag_normalizada = tag.lower()
-
-        if tag_normalizada not in [
-            t.lower() for t in tags
-        ]:
-            tags.append(tag)
-
-    # --------------------------------------------------------
-    # Texto para análise
-    # --------------------------------------------------------
-
-    titulo_limpo = re.sub(
-        r"[^\wÀ-ÿ\s]",
-        " ",
-        titulo,
-        flags=re.UNICODE
-    )
-
-    texto_inicio = texto[:500]
-
-    texto_analise = (
-        titulo_limpo + " " + texto_inicio
-    ).lower()
-
-    # --------------------------------------------------------
-    # Categoria
-    # --------------------------------------------------------
-
-    adicionar_tag(categoria)
-
-    # --------------------------------------------------------
-    # Clusters
-    # --------------------------------------------------------
-
-    for nome_cluster, termos in clusters.items():
-
-        encontrou = False
-
-        for termo in termos:
-
-            if termo.lower() in texto_analise:
-                encontrou = True
-                break
-
-        if encontrou:
-
-            # adiciona os termos mais relevantes
-            for termo in termos[:4]:
-
-                if termo.lower() in texto_analise:
-                    adicionar_tag(termo)
-
-    # --------------------------------------------------------
-    # Entidades
-    # --------------------------------------------------------
-
-    for entidade in entidades:
-
-        if entidade.lower() in texto_analise:
-            adicionar_tag(entidade)
-
-    # --------------------------------------------------------
-    # Palavras compostas do título
-    # --------------------------------------------------------
-
-    palavras = titulo_limpo.split()
-
-    palavras_filtradas = [
-        p for p in palavras
-        if len(p) >= 4
-    ]
-
-    stopwords = {
-        "para",
-        "como",
-        "qual",
-        "quais",
-        "esse",
-        "essa",
-        "isso",
-        "quando",
-        "onde",
-        "porque",
-        "você",
-        "voce",
-        "mais",
-        "menos",
-        "muito",
-        "muita",
-        "pode",
-        "podem",
-        "está",
-        "esta",
-        "estão",
-        "estao"
-    }
-
-    palavras_filtradas = [
-        p for p in palavras_filtradas
-        if p.lower() not in stopwords
-    ]
-
-    # Bigrams
-    for i in range(len(palavras_filtradas) - 1):
-
-        expressao = (
-            f"{palavras_filtradas[i]} "
-            f"{palavras_filtradas[i + 1]}"
+    with open(
+        ARQUIVO_CONTROLE_AGENDAMENTO,
+        "a",
+        encoding="utf-8"
+    ) as f:
+
+        f.write(
+            f"{data_str}|{horario}\n"
         )
 
-        adicionar_tag(expressao)
 
-    # Trigrams
-    for i in range(len(palavras_filtradas) - 2):
+# ==========================================================
+# LOCALIZAR HORÁRIO NORMAL
+# ==========================================================
 
-        expressao = (
-            f"{palavras_filtradas[i]} "
-            f"{palavras_filtradas[i + 1]} "
-            f"{palavras_filtradas[i + 2]}"
-        )
-
-        adicionar_tag(expressao)
-
-    # Palavras individuais do título
-    for palavra in palavras_filtradas:
-        adicionar_tag(palavra)
-
-    # --------------------------------------------------------
-    # Tags fixas
-    # --------------------------------------------------------
-
-    adicionar_tag("Emagrecimento")
-    adicionar_tag("Saúde")
-
-    # --------------------------------------------------------
-    # Limpeza
-    # --------------------------------------------------------
-
-    tags_finais = []
-
-    tamanho_atual = 0
-
-    for tag in tags:
-
-        if len(tags_finais) >= 15:
-            break
-
-        nova_tag = tag
-
-        if tags_finais:
-            tamanho_adicional = len(nova_tag) + 1
-        else:
-            tamanho_adicional = len(nova_tag)
-
-        if tamanho_atual + tamanho_adicional <= 200:
-
-            tags_finais.append(nova_tag)
-            tamanho_atual += tamanho_adicional
-
-    return tags_finais
-
-
-# ============================================================
-# BLOGGER
-# ============================================================
-
-SCOPES = [
-    "https://www.googleapis.com/auth/blogger"
-]
-
-
-def obter_servico_blogger():
+def encontrar_horario_disponivel(agora):
     """
-    Autentica no Google e retorna o serviço Blogger.
+    Procura todos os horários da agenda que estejam dentro
+    da janela de postagem.
+
+    Retorna o horário mais próximo ainda não utilizado.
     """
-
-    creds = None
-
-    if os.path.exists("token.json"):
-
-        creds = Credentials.from_authorized_user_file(
-            "token.json",
-            SCOPES
-        )
-
-    if not creds or not creds.valid:
-
-        if creds and creds.expired and creds.refresh_token:
-
-            creds.refresh(Request())
-
-        else:
-
-            flow = InstalledAppFlow.from_client_secrets_file(
-                "credentials.json",
-                SCOPES
-            )
-
-            creds = flow.run_local_server(
-                port=0
-            )
-
-        with open(
-            "token.json",
-            "w",
-            encoding="utf-8"
-        ) as token:
-
-            token.write(creds.to_json())
-
-    return build(
-        "blogger",
-        "v3",
-        credentials=creds
-    )
-
-
-# ============================================================
-# EXECUÇÃO PRINCIPAL
-# ============================================================
-
-if __name__ == "__main__":
-
-    agora = obter_horario_brasilia()
-
-    data_hoje = agora.strftime("%Y-%m-%d")
-
-    hora_atual = agora.strftime("%H:%M")
 
     min_atual = (
         agora.hour * 60
         + agora.minute
     )
 
-    print("=" * 60)
-    print("BOT BLOGGER")
-    print("=" * 60)
+    data_hoje = agora.strftime(
+        "%Y-%m-%d"
+    )
+
+    horarios_validos = []
+
+    for horario_agenda in AGENDA_POSTAGENS:
+
+        try:
+
+            min_agenda = horario_para_minutos(
+                horario_agenda
+            )
+
+        except (
+            ValueError,
+            TypeError
+        ):
+
+            print(
+                f"Horário inválido ignorado: "
+                f"{horario_agenda}"
+            )
+
+            continue
+
+        if ja_postou(
+            data_hoje,
+            horario_agenda
+        ):
+            continue
+
+        distancia = diferenca_circular_minutos(
+            min_atual,
+            min_agenda
+        )
+
+        if distancia <= JANELA_POSTAGEM:
+
+            horarios_validos.append(
+                (
+                    distancia,
+                    horario_agenda
+                )
+            )
+
+    if not horarios_validos:
+        return None
+
+    horarios_validos.sort(
+        key=lambda item: item[0]
+    )
+
+    return horarios_validos[0][1]
+
+
+# ==========================================================
+# RECUPERAR HORÁRIO PERDIDO
+# ==========================================================
+
+def encontrar_horario_atrasado(agora):
+    """
+    Procura um horário da agenda de hoje que já passou
+    e ainda não foi publicado.
+
+    Retorna o horário perdido mais recente.
+
+    Esta função só é usada no modo NORMAL.
+    """
+
+    min_atual = (
+        agora.hour * 60
+        + agora.minute
+    )
+
+    data_hoje = agora.strftime(
+        "%Y-%m-%d"
+    )
+
+    horarios_perdidos = []
+
+    for horario_agenda in AGENDA_POSTAGENS:
+
+        try:
+
+            min_agenda = horario_para_minutos(
+                horario_agenda
+            )
+
+        except (
+            ValueError,
+            TypeError
+        ):
+
+            continue
+
+        # O horário precisa já ter passado
+        if min_agenda >= min_atual:
+            continue
+
+        # Não pode ter sido publicado anteriormente
+        if ja_postou(
+            data_hoje,
+            horario_agenda
+        ):
+            continue
+
+        atraso = (
+            min_atual
+            - min_agenda
+        )
+
+        horarios_perdidos.append(
+            (
+                atraso,
+                horario_agenda
+            )
+        )
+
+    if not horarios_perdidos:
+        return None
+
+    # Primeiro o horário perdido mais recente
+    horarios_perdidos.sort(
+        key=lambda item: item[0]
+    )
+
+    return horarios_perdidos[0][1]
+
+
+# ==========================================================
+# CONTROLE DE TEMA
+# ==========================================================
+
+def tema_usado_recentemente(titulo):
+
+    if not os.path.exists(
+        ARQUIVO_CONTROLE_TEMAS
+    ):
+        return False
+
+    agora = obter_horario_brasilia()
+
+    with open(
+        ARQUIVO_CONTROLE_TEMAS,
+        "r",
+        encoding="utf-8"
+    ) as f:
+
+        for linha in f:
+
+            linha = linha.strip()
+
+            if "|" not in linha:
+                continue
+
+            partes = linha.split("|", 1)
+
+            if len(partes) != 2:
+                continue
+
+            data_str, titulo_salvo = partes
+
+            try:
+
+                data_tema = datetime.strptime(
+                    data_str,
+                    "%Y-%m-%d"
+                ).replace(
+                    tzinfo=FUSO_BRASILIA
+                )
+
+            except ValueError:
+
+                continue
+
+            diferenca_dias = (
+                agora - data_tema
+            ).days
+
+            if (
+                titulo_salvo.strip().lower()
+                == titulo.strip().lower()
+                and
+                diferenca_dias < DIAS_BLOQUEIO_TEMA
+            ):
+                return True
+
+    return False
+
+
+def registrar_tema(titulo):
+
+    hoje = obter_horario_brasilia().strftime(
+        "%Y-%m-%d"
+    )
+
+    with open(
+        ARQUIVO_CONTROLE_TEMAS,
+        "a",
+        encoding="utf-8"
+    ) as f:
+
+        f.write(
+            f"{hoje}|{titulo}\n"
+        )
+
+
+# ==========================================================
+# NORMALIZAÇÃO DE TEXTO
+# ==========================================================
+
+def normalizar_texto(texto):
+    """
+    Normaliza espaços e coloca o texto em minúsculas.
+    Mantém acentos.
+    """
+
+    if not texto:
+        return ""
+
+    texto = texto.lower()
+
+    texto = re.sub(
+        r"\s+",
+        " ",
+        texto
+    )
+
+    return texto.strip()
+
+
+def adicionar_tag(tags, tag):
+    """
+    Adiciona uma tag sem duplicação.
+    """
+
+    if not tag:
+        return
+
+    tag = tag.strip()
+
+    if len(tag) < 4:
+        return
+
+    tags_normalizadas = {
+        normalizar_texto(t)
+        for t in tags
+    }
+
+    if normalizar_texto(tag) not in tags_normalizadas:
+
+        tags.append(tag)
+
+
+# ==========================================================
+# GERAR TAGS SEO
+# ==========================================================
+
+def gerar_tags_seo(titulo, texto):
+
+    stopwords = {
+        "com",
+        "como",
+        "para",
+        "porque",
+        "porquê",
+        "sobre",
+        "entre",
+        "de",
+        "do",
+        "da",
+        "dos",
+        "das",
+        "em",
+        "um",
+        "uma",
+        "uns",
+        "umas",
+        "os",
+        "as",
+        "que",
+        "no",
+        "na",
+        "nos",
+        "nas",
+        "ao",
+        "aos",
+        "por",
+        "mais",
+        "menos",
+        "ser",
+        "estar",
+        "ter",
+        "se",
+        "sua",
+        "seu",
+        "suas",
+        "seus",
+        "também",
+        "muito",
+        "muitos",
+        "muitas",
+        "esse",
+        "essa",
+        "isso",
+        "este",
+        "esta",
+        "estes",
+        "estas"
+    }
+
+
+    # ======================================================
+    # CLUSTERS PRINCIPAIS
+    # ======================================================
+
+    clusters = {
+
+        "Emagrecimento": [
+            "emagrecer",
+            "emagrecimento",
+            "perder peso",
+            "perda de peso",
+            "perder gordura",
+            "queimar gordura",
+            "gordura corporal",
+            "redução de gordura",
+            "peso saudável",
+            "peso ideal",
+            "controle do peso",
+            "manter o peso",
+            "efeito sanfona",
+            "obesidade",
+            "sobrepeso",
+            "composição corporal",
+            "massa corporal",
+            "imc",
+            "índice de massa corporal"
+        ],
+
+        "Metabolismo": [
+            "metabolismo",
+            "metabolismo lento",
+            "metabolismo acelerado",
+            "taxa metabólica",
+            "taxa metabólica basal",
+            "gasto energético",
+            "gasto calórico",
+            "termogênese",
+            "termogenese",
+            "efeito térmico dos alimentos",
+            "metabolismo energético",
+            "saúde metabólica",
+            "flexibilidade metabólica",
+            "resistência à insulina"
+        ],
+
+        "Nutrição": [
+            "nutrição",
+            "nutricao",
+            "alimentação",
+            "alimentação saudável",
+            "nutrientes",
+            "macronutrientes",
+            "micronutrientes",
+            "proteína",
+            "proteina",
+            "carboidratos",
+            "gorduras",
+            "fibras",
+            "vitaminas",
+            "minerais",
+            "antioxidantes",
+            "probióticos",
+            "prebióticos",
+            "hidratação",
+            "água",
+            "deficiência nutricional"
+        ],
+
+        "Dietas": [
+            "dieta",
+            "dietas",
+            "plano alimentar",
+            "reeducação alimentar",
+            "alimentação equilibrada",
+            "dieta para emagrecer",
+            "dieta saudável",
+            "dieta mediterrânea",
+            "dieta mediterranea",
+            "dieta low carb",
+            "low carb",
+            "dieta cetogênica",
+            "dieta cetogenica",
+            "dieta paleo",
+            "dieta vegetariana",
+            "dieta vegana",
+            "jejum",
+            "jejum intermitente",
+            "janela alimentar",
+            "restrição calórica",
+            "restricao calorica",
+            "déficit calórico",
+            "deficit calorico"
+        ],
+
+        "Calorias": [
+            "calorias",
+            "caloria",
+            "calorias dos alimentos",
+            "contagem de calorias",
+            "contar calorias",
+            "déficit calórico",
+            "deficit calorico",
+            "gasto calórico",
+            "consumo calórico",
+            "necessidade calórica",
+            "balanço energético",
+            "valor energético"
+        ],
+
+        "Alimentos": [
+            "alimentos saudáveis",
+            "alimentos para emagrecer",
+            "alimentos que emagrecem",
+            "alimentos ricos em proteína",
+            "alimentos ricos em fibras",
+            "alimentos com poucas calorias",
+            "alimentos nutritivos",
+            "frutas",
+            "verduras",
+            "legumes",
+            "grãos",
+            "cereais",
+            "sementes",
+            "castanhas",
+            "ovos",
+            "peixes",
+            "carnes magras",
+            "laticínios",
+            "leguminosas",
+            "feijão",
+            "aveia"
+        ],
+
+        "Receitas": [
+            "receitas saudáveis",
+            "receitas para emagrecer",
+            "receitas fitness",
+            "receitas low carb",
+            "receitas com poucas calorias",
+            "receitas proteicas",
+            "receitas ricas em fibras",
+            "café da manhã saudável",
+            "almoço saudável",
+            "jantar saudável",
+            "lanche saudável",
+            "sobremesa saudável",
+            "suco saudável",
+            "salada",
+            "sopa saudável",
+            "marmita saudável"
+        ],
+
+        "Exercícios": [
+            "exercício",
+            "exercicio",
+            "atividade física",
+            "atividade fisica",
+            "treino",
+            "treinos",
+            "movimentos",
+            "caminhada",
+            "correr",
+            "corrida",
+            "musculação",
+            "treinamento de força",
+            "exercício aeróbico",
+            "exercicio aerobico",
+            "cardio",
+            "alongamento",
+            "mobilidade",
+            "calistenia",
+            "exercícios em casa",
+            "exercícios para iniciantes",
+            "treino para emagrecer"
+        ],
+
+        "Saúde Metabólica": [
+            "insulina",
+            "resistência à insulina",
+            "resistencia a insulina",
+            "glicose",
+            "açúcar no sangue",
+            "acucar no sangue",
+            "diabetes",
+            "pré-diabetes",
+            "pre-diabetes",
+            "colesterol",
+            "colesterol alto",
+            "triglicerídeos",
+            "triglicerideos",
+            "pressão arterial",
+            "pressao arterial",
+            "hipertensão",
+            "hipertensao",
+            "síndrome metabólica",
+            "sindrome metabolica",
+            "gordura no fígado",
+            "esteatose hepática",
+            "saúde cardiovascular"
+        ],
+
+        "Saúde e Bem-estar": [
+            "saúde",
+            "saude",
+            "bem-estar",
+            "bem estar",
+            "qualidade de vida",
+            "hábitos saudáveis",
+            "hábitos de saúde",
+            "estilo de vida saudável",
+            "prevenção",
+            "longevidade",
+            "envelhecimento saudável",
+            "saúde física",
+            "saúde mental",
+            "energia",
+            "disposição",
+            "vitalidade"
+        ],
+
+        "Sono": [
+            "sono",
+            "dormir",
+            "qualidade do sono",
+            "insônia",
+            "insonia",
+            "privação de sono",
+            "horas de sono",
+            "higiene do sono",
+            "sono e emagrecimento",
+            "sono e metabolismo"
+        ],
+
+        "Estresse": [
+            "estresse",
+            "stress",
+            "ansiedade",
+            "estresse e emagrecimento",
+            "estresse e alimentação",
+            "comer por ansiedade",
+            "fome emocional",
+            "alimentação emocional",
+            "controle emocional",
+            "relaxamento",
+            "meditação",
+            "meditacao",
+            "respiração",
+            "mindfulness"
+        ],
+
+        "Sedentarismo": [
+            "sedentarismo",
+            "sedentário",
+            "sedentaria",
+            "ficar sentado",
+            "tempo sentado",
+            "falta de atividade física",
+            "inatividade física",
+            "inatividade fisica",
+            "movimentação",
+            "passos por dia",
+            "caminhar mais"
+        ],
+
+        "Fome e Apetite": [
+            "fome",
+            "fome excessiva",
+            "apetite",
+            "controle do apetite",
+            "saciedade",
+            "fome emocional",
+            "compulsão alimentar",
+            "compulsao alimentar",
+            "vontade de comer",
+            "fome noturna",
+            "beliscar",
+            "comer demais"
+        ],
+
+        "Saúde Digestiva": [
+            "digestão",
+            "digestao",
+            "sistema digestivo",
+            "intestino",
+            "saúde intestinal",
+            "flora intestinal",
+            "microbiota intestinal",
+            "prisão de ventre",
+            "constipação",
+            "constipacao",
+            "inchaço abdominal",
+            "gases",
+            "azia",
+            "refluxo",
+            "fibras e intestino"
+        ],
+
+        "Hormônios": [
+            "hormônios",
+            "hormonios",
+            "hormônios e emagrecimento",
+            "hormonios e emagrecimento",
+            "insulina",
+            "leptina",
+            "grelina",
+            "cortisol",
+            "hormônios da fome",
+            "hormonios da fome",
+            "tireoide",
+            "hormônios da tireoide",
+            "menopausa e peso"
+        ],
+
+        "Suplementos": [
+            "suplementos",
+            "suplementação",
+            "suplementacao",
+            "vitaminas",
+            "minerais",
+            "proteína em pó",
+            "whey protein",
+            "creatina",
+            "ômega 3",
+            "omega 3",
+            "fibras",
+            "probióticos",
+            "prebióticos"
+        ],
+
+        "Hábitos": [
+            "hábitos saudáveis",
+            "hábitos para emagrecer",
+            "hábitos alimentares",
+            "rotina saudável",
+            "mudança de hábitos",
+            "reeducação alimentar",
+            "planejamento alimentar",
+            "organização alimentar",
+            "preparação de refeições",
+            "meal prep",
+            "controle de porções",
+            "alimentação consciente"
+        ]
+    }
+
+
+    # ======================================================
+    # ENTIDADES IMPORTANTES
+    # ======================================================
+
+    entidades_saude = {
+
+        "metabolismo": "Metabolismo",
+        "calorias": "Calorias",
+        "termogênese": "Termogênese",
+        "termogenese": "Termogênese",
+        "gasto energético": "Gasto Energético",
+        "taxa metabólica": "Taxa Metabólica",
+
+        "emagrecimento": "Emagrecimento",
+        "obesidade": "Obesidade",
+        "sobrepeso": "Sobrepeso",
+        "imc": "Índice de Massa Corporal",
+
+        "insulina": "Insulina",
+        "glicose": "Glicose",
+        "diabetes": "Diabetes",
+        "pré-diabetes": "Pré-diabetes",
+        "pre-diabetes": "Pré-diabetes",
+        "colesterol": "Colesterol",
+        "triglicerídeos": "Triglicerídeos",
+        "triglicerideos": "Triglicerídeos",
+        "pressão": "Pressão Arterial",
+        "pressao": "Pressão Arterial",
+        "pressão arterial": "Pressão Arterial",
+        "pressao arterial": "Pressão Arterial",
+        "hipertensão": "Hipertensão",
+        "hipertensao": "Hipertensão",
+        "síndrome metabólica": "Síndrome Metabólica",
+        "sindrome metabolica": "Síndrome Metabólica",
+
+        "proteína": "Proteína",
+        "proteina": "Proteína",
+        "carboidratos": "Carboidratos",
+        "gorduras": "Gorduras",
+        "fibras": "Fibras",
+        "vitaminas": "Vitaminas",
+        "minerais": "Minerais",
+        "antioxidantes": "Antioxidantes",
+        "probióticos": "Probióticos",
+        "prebióticos": "Prebióticos",
+
+        "exercício": "Exercício",
+        "exercicio": "Exercício",
+        "atividade física": "Atividade Física",
+        "atividade fisica": "Atividade Física",
+        "musculação": "Musculação",
+        "caminhada": "Caminhada",
+        "sedentarismo": "Sedentarismo",
+
+        "sono": "Sono",
+        "insônia": "Insônia",
+        "insonia": "Insônia",
+        "estresse": "Estresse",
+        "ansiedade": "Ansiedade",
+        "meditação": "Meditação",
+        "meditacao": "Meditação",
+
+        "intestino": "Intestino",
+        "microbiota": "Microbiota Intestinal",
+        "microbiota intestinal": "Microbiota Intestinal",
+        "digestão": "Digestão",
+        "digestao": "Digestão",
+        "constipação": "Constipação",
+        "constipacao": "Constipação",
+        "refluxo": "Refluxo",
+
+        "jejum": "Jejum Intermitente",
+        "jejum intermitente": "Jejum Intermitente",
+        "low carb": "Dieta Low Carb",
+        "dieta mediterrânea": "Dieta Mediterrânea",
+        "dieta mediterranea": "Dieta Mediterrânea",
+        "dieta cetogênica": "Dieta Cetogênica",
+        "dieta cetogenica": "Dieta Cetogênica",
+
+        "cortisol": "Cortisol",
+        "leptina": "Leptina",
+        "grelina": "Grelina",
+        "tireoide": "Tireoide",
+
+        "whey protein": "Whey Protein",
+        "creatina": "Creatina",
+        "ômega 3": "Ômega 3",
+        "omega 3": "Ômega 3"
+    }
+
+
+    # ======================================================
+    # TEXTO ANALISADO
+    # ======================================================
+
+    titulo_normalizado = normalizar_texto(
+        titulo
+    )
+
+    texto_normalizado = normalizar_texto(
+        texto
+    )
+
+    conteudo = (
+        titulo_normalizado
+        + " "
+        + texto_normalizado[:5000]
+    )
+
+    tags = []
+
+
+    # ======================================================
+    # 1. EXPRESSÕES DOS CLUSTERS
+    # ======================================================
+
+    for cluster, palavras in clusters.items():
+
+        encontrou = False
+
+        for palavra in palavras:
+
+            if normalizar_texto(
+                palavra
+            ) in conteudo:
+
+                adicionar_tag(
+                    tags,
+                    cluster
+                )
+
+                encontrou = True
+
+                break
+
+        if encontrou:
+            continue
+
+
+    # ======================================================
+    # 2. ENTIDADES DE SAÚDE
+    # ======================================================
+
+    entidades_encontradas = []
+
+    for chave, entidade in entidades_saude.items():
+
+        chave_normalizada = normalizar_texto(
+            chave
+        )
+
+        if chave_normalizada in conteudo:
+
+            if entidade not in entidades_encontradas:
+
+                entidades_encontradas.append(
+                    entidade
+                )
+
+    for entidade in entidades_encontradas:
+
+        adicionar_tag(
+            tags,
+            entidade
+        )
+
+
+    # ======================================================
+    # 3. EXPRESSÕES DO TÍTULO
+    # ======================================================
+
+    palavras_titulo = re.findall(
+        r"\b[a-zà-ÿ]{4,}\b",
+        titulo_normalizado
+    )
+
+    palavras_titulo_filtradas = [
+        palavra
+        for palavra in palavras_titulo
+        if palavra not in stopwords
+    ]
+
+
+    # Bigramas
+    for i in range(
+        len(palavras_titulo_filtradas) - 1
+    ):
+
+        frase = (
+            palavras_titulo_filtradas[i]
+            + " "
+            + palavras_titulo_filtradas[i + 1]
+        )
+
+        if len(frase) >= 8:
+
+            adicionar_tag(
+                tags,
+                frase.title()
+            )
+
+
+    # Trigramas
+    for i in range(
+        len(palavras_titulo_filtradas) - 2
+    ):
+
+        frase = (
+            palavras_titulo_filtradas[i]
+            + " "
+            + palavras_titulo_filtradas[i + 1]
+            + " "
+            + palavras_titulo_filtradas[i + 2]
+        )
+
+        if len(frase) >= 12:
+
+            adicionar_tag(
+                tags,
+                frase.title()
+            )
+
+
+    # ======================================================
+    # 4. PALAVRAS IMPORTANTES DO TÍTULO
+    # ======================================================
+
+    for palavra in palavras_titulo_filtradas:
+
+        if len(palavra) < 4:
+            continue
+
+        adicionar_tag(
+            tags,
+            palavra.capitalize()
+        )
+
+
+    # ======================================================
+    # 5. TAGS FIXAS
+    # ======================================================
+
+    tags_fixas = [
+        "Emagrecimento",
+        "Saúde",
+        "Bem-estar"
+    ]
+
+    for tag_fixa in tags_fixas:
+
+        adicionar_tag(
+            tags,
+            tag_fixa
+        )
+
+
+    # ======================================================
+    # 6. LIMITE DE 200 CARACTERES
+    # ======================================================
+
+    resultado = []
+
+    tamanho_atual = 0
+
+    for tag in tags:
+
+        tag = tag.strip()
+
+        if len(tag) < 4:
+            continue
+
+        tamanho_tag = len(tag)
+
+        novo_tamanho = (
+            tamanho_atual
+            + tamanho_tag
+            + (2 if resultado else 0)
+        )
+
+        if novo_tamanho <= 200:
+
+            resultado.append(tag)
+
+            tamanho_atual = novo_tamanho
+
+        else:
+
+            break
+
+
+    resultado = resultado[:15]
+
+    return resultado
+
+
+# ==========================================================
+# CONSTRUIR SERVIÇO BLOGGER
+# ==========================================================
+
+def obter_servico_blogger():
+
+    credenciais = (
+        Credentials.from_authorized_user_file(
+            "token.json"
+        )
+    )
+
+    return build(
+        "blogger",
+        "v3",
+        credentials=credenciais
+    )
+
+
+# ==========================================================
+# INFORMAÇÕES INICIAIS
+# ==========================================================
+
+agora = obter_horario_brasilia()
+
+data_hoje = agora.strftime(
+    "%Y-%m-%d"
+)
+
+hora_atual = agora.strftime(
+    "%H:%M"
+)
+
+
+print(
+    "============================================================"
+)
+
+print(
+    "BOT BLOGGER"
+)
+
+print(
+    "============================================================"
+)
+
+print(
+    f"Data/hora Brasília: "
+    f"{agora.strftime('%d/%m/%Y %H:%M:%S')}"
+)
+
+print(
+    f"Modo TEST_MODE: "
+    f"{str(TEST_MODE).lower()}"
+)
+
+print(
+    f"Modo FORCAR_POSTAGEM: "
+    f"{str(FORCAR_POSTAGEM).lower()}"
+)
+
+print(
+    f"Janela normal: "
+    f"{JANELA_POSTAGEM} minutos"
+)
+
+print(
+    f"Agenda: "
+    f"{', '.join(AGENDA_POSTAGENS.keys())}"
+)
+
+print(
+    "============================================================"
+)
+
+
+# ==========================================================
+# MODO TESTE — RASCUNHO
+# ==========================================================
+#
+# TEST_MODE=true
+#
+# Este modo:
+# - ignora completamente a agenda;
+# - ignora a janela;
+# - gera conteúdo imediatamente;
+# - cria RASCUNHO no Blogger;
+# - não consome o horário 15:00.
+#
+
+if TEST_MODE:
+
+    print()
     print(
-        f"Data/hora Brasília: "
-        f"{agora.strftime('%d/%m/%Y %H:%M:%S')}"
+        ">>> MODO TESTE ATIVADO <<<"
     )
 
     print(
-        f"Modo forçado/teste: "
-        f"{FORCAR_POSTAGEM}"
+        f"Horário do teste: {hora_atual}"
     )
 
     print(
-        f"Janela normal: "
-        f"{JANELA_MINUTOS} minutos"
+        "A agenda será ignorada."
     )
 
     print(
-        f"Agenda: "
-        f"{', '.join(AGENDA_POSTAGENS.keys())}"
+        "O conteúdo será criado como RASCUNHO."
     )
 
-    print("=" * 60)
+    horario_escolhido = (
+        f"TESTE-{hora_atual}"
+    )
 
-    # ========================================================
-    # DEFINIÇÃO DO HORÁRIO DA PUBLICAÇÃO
-    # ========================================================
+    print()
+    print(
+        "Inicializando Gemini..."
+    )
 
-    horario_escolhido = None
+    gemini = GeminiEngine()
 
-    # --------------------------------------------------------
-    # 1. TESTE / FORÇADO
-    # --------------------------------------------------------
+    print(
+        "Inicializando ImageEngine..."
+    )
 
-    if FORCAR_POSTAGEM == "true":
+    imagem_engine = ImageEngine()
 
-        print()
-        print(">>> MODO TESTE/FORÇADO ATIVADO <<<")
+    categoria = random.choice(
+        CATEGORIAS_EDITORIAIS
+    )
+
+    print(
+        f"Categoria selecionada: "
+        f"{categoria}"
+    )
+
+    # ------------------------------------------------------
+    # TEMA
+    # ------------------------------------------------------
+
+    titulo = None
+
+    for tentativa_numero in range(5):
+
+        tentativa = gemini.gerar_tema(
+            categoria
+        )
+
+        if not tentativa:
+            continue
+
+        tentativa = tentativa.strip()
+
+        if not tema_usado_recentemente(
+            tentativa
+        ):
+
+            titulo = tentativa
+
+            break
+
+    if not titulo:
+
         print(
-            f"Publicação será realizada imediatamente "
-            f"às {hora_atual}."
+            "Nenhum tema novo encontrado."
         )
+
+        raise SystemExit
+
+
+    print(
+        f"Tema escolhido: "
+        f"{titulo}"
+    )
+
+
+    # ------------------------------------------------------
+    # ARTIGO
+    # ------------------------------------------------------
+
+    texto = gemini.gerar_artigo(
+        titulo,
+        categoria
+    )
+
+    if not texto:
+
         print(
-            "A agenda de publicação será ignorada."
+            "O Gemini não retornou conteúdo."
         )
 
-        # Importante:
-        # O teste NÃO consome o horário real da agenda.
-        horario_escolhido = (
-            f"TESTE-{hora_atual}"
+        raise SystemExit
+
+
+    # ------------------------------------------------------
+    # IMAGEM
+    # ------------------------------------------------------
+
+    imagem = imagem_engine.obter_imagem(
+        titulo
+    )
+
+
+    # ------------------------------------------------------
+    # HTML
+    # ------------------------------------------------------
+
+    html = obter_esqueleto_html({
+        "titulo": titulo,
+        "imagem": imagem,
+        "texto_completo": texto,
+        "assinatura": BLOCO_FIXO_FINAL
+    })
+
+
+    # ------------------------------------------------------
+    # TAGS
+    # ------------------------------------------------------
+
+    labels = gerar_tags_seo(
+        titulo,
+        texto
+    )
+
+    print(
+        f"Tags SEO: {labels}"
+    )
+
+
+    # ------------------------------------------------------
+    # BLOGGER
+    # ------------------------------------------------------
+
+    service = obter_servico_blogger()
+
+    print(
+        "Criando rascunho no Blogger..."
+    )
+
+    service.posts().insert(
+        blogId=BLOG_ID,
+        body={
+            "title": titulo,
+            "content": html,
+            "labels": labels
+        },
+        isDraft=True
+    ).execute()
+
+
+    # ------------------------------------------------------
+    # REGISTRO DO TEMA
+    # ------------------------------------------------------
+
+    registrar_tema(
+        titulo
+    )
+
+
+    print()
+    print(
+        "============================================================"
+    )
+
+    print(
+        "TESTE CONCLUÍDO"
+    )
+
+    print(
+        "Rascunho criado com sucesso."
+    )
+
+    print(
+        f"Título: {titulo}"
+    )
+
+    print(
+        f"Horário do teste: {hora_atual}"
+    )
+
+    print(
+        "O horário das 15:00 NÃO foi consumido."
+    )
+
+    print(
+        "============================================================"
+    )
+
+    raise SystemExit
+
+
+# ==========================================================
+# MODO FORÇADO — PUBLICAÇÃO REAL
+# ==========================================================
+#
+# FORCAR_POSTAGEM=true
+#
+# Este modo:
+# - ignora agenda;
+# - ignora janela;
+# - publica imediatamente;
+# - registra FORCADO-HH:MM;
+# - NÃO consome o horário 15:00.
+#
+
+if FORCAR_POSTAGEM:
+
+    print()
+    print(
+        ">>> MODO FORÇADO ATIVADO <<<"
+    )
+
+    print(
+        f"Horário atual: {hora_atual}"
+    )
+
+    print(
+        "A agenda de publicação será ignorada."
+    )
+
+    print(
+        "A postagem será PUBLICADA imediatamente."
+    )
+
+    horario_escolhido = (
+        f"FORCADO-{hora_atual}"
+    )
+
+
+# ==========================================================
+# MODO NORMAL
+# ==========================================================
+
+else:
+
+    print()
+    print(
+        ">>> MODO NORMAL <<<"
+    )
+
+    horario_escolhido = encontrar_horario_disponivel(
+        agora
+    )
+
+    # ------------------------------------------------------
+    # DENTRO DA JANELA
+    # ------------------------------------------------------
+
+    if horario_escolhido:
+
+        print(
+            f"Horário de agenda encontrado: "
+            f"{horario_escolhido}"
         )
 
-    # --------------------------------------------------------
-    # 2. MODO NORMAL
-    # --------------------------------------------------------
+        print(
+            f"Horário atual: "
+            f"{hora_atual}"
+        )
+
+    # ------------------------------------------------------
+    # FORA DA JANELA → RECUPERAÇÃO
+    # ------------------------------------------------------
 
     else:
 
-        horario_escolhido = encontrar_horario_agenda()
+        horario_atrasado = encontrar_horario_atrasado(
+            agora
+        )
 
-        if horario_escolhido:
+        if horario_atrasado:
+
+            horario_escolhido = (
+                horario_atrasado
+            )
 
             print()
             print(
-                "Horário de agenda encontrado:"
+                ">>> PUBLICAÇÃO ATRASADA DETECTADA <<<"
             )
 
             print(
-                f"Horário programado: "
-                f"{horario_escolhido}"
+                f"Horário original: "
+                f"{horario_atrasado}"
             )
 
             print(
@@ -838,333 +1531,326 @@ if __name__ == "__main__":
                 f"{hora_atual}"
             )
 
+            print(
+                "A publicação será recuperada agora."
+            )
+
         else:
 
-            # ------------------------------------------------
-            # 3. TENTAR RECUPERAR HORÁRIO PERDIDO
-            # ------------------------------------------------
-
-            horario_atrasado = encontrar_horario_atrasado()
-
-            if horario_atrasado:
-
-                horario_escolhido = horario_atrasado
-
-                print()
-                print(
-                    ">>> PUBLICAÇÃO ATRASADA DETECTADA <<<"
-                )
-
-                print(
-                    f"Horário original: "
-                    f"{horario_atrasado}"
-                )
-
-                print(
-                    f"Horário atual: "
-                    f"{hora_atual}"
-                )
-
-                print(
-                    "A publicação será recuperada agora."
-                )
-
-            else:
-
-                print()
-                print(
-                    "Fora da janela de publicação."
-                )
-
-                print(
-                    f"Horário atual: {hora_atual}"
-                )
-
-                print(
-                    f"Janela normal: "
-                    f"{JANELA_MINUTOS} minutos"
-                )
-
-                print(
-                    "Nenhuma ação realizada."
-                )
-
-                raise SystemExit
-
-    # ========================================================
-    # GERAÇÃO DO CONTEÚDO
-    # ========================================================
-
-    print()
-    print("=" * 60)
-    print("GERANDO CONTEÚDO")
-    print("=" * 60)
-
-    # --------------------------------------------------------
-    # Categoria
-    # --------------------------------------------------------
-
-    categoria = random.choice(
-        CATEGORIAS_EDITORIAIS
-    )
-
-    print(
-        f"Categoria escolhida: {categoria}"
-    )
-
-    # --------------------------------------------------------
-    # Geração do tema
-    # --------------------------------------------------------
-
-    tema = None
-
-    for tentativa in range(1, 6):
-
-        print(
-            f"Gerando tema "
-            f"(tentativa {tentativa}/5)..."
-        )
-
-        # ====================================================
-        # IMPORTANTE:
-        # MANTENHA AQUI A SUA FUNÇÃO ORIGINAL DE GERAÇÃO
-        # DE TEMA, CASO ELA ESTEJA DEFINIDA NO SEU ARQUIVO.
-        # ====================================================
-
-        try:
-
-            tema = gerar_tema(categoria)
-
-        except NameError:
-
+            print()
             print(
-                "ERRO: a função gerar_tema() "
-                "não está definida neste arquivo."
+                "Fora da janela de postagem."
             )
 
-            raise
-
-        if tema:
-
-            tema = tema.strip()
-
-            if not tema_usado_recentemente(tema):
-
-                break
-
             print(
-                "Tema já utilizado recentemente. "
-                "Gerando outro..."
+                f"Horário atual: "
+                f"{hora_atual}"
             )
 
-            tema = None
+            print(
+                f"Janela utilizada: "
+                f"{JANELA_POSTAGEM} minutos"
+            )
 
-    if not tema:
+            print(
+                "Nenhum horário atrasado disponível."
+            )
 
-        print(
-            "Não foi possível obter um tema novo."
-        )
+            print(
+                "Nenhuma ação realizada."
+            )
 
-        raise SystemExit
+            raise SystemExit
+
+
+# ==========================================================
+# INFORMAÇÕES DE EXECUÇÃO
+# ==========================================================
+
+print()
+print(
+    "============================================================"
+)
+
+print(
+    "EXECUÇÃO DO BLOG"
+)
+
+print(
+    "============================================================"
+)
+
+print(
+    f"Horário Brasília: "
+    f"{agora.strftime('%d/%m/%Y %H:%M')}"
+)
+
+print(
+    f"Janela normal: "
+    f"{JANELA_POSTAGEM} minutos"
+)
+
+print(
+    f"Horário selecionado: "
+    f"{horario_escolhido}"
+)
+
+
+# ==========================================================
+# INICIALIZAÇÃO DOS ENGINES
+# ==========================================================
+
+print()
+print(
+    "Inicializando Gemini..."
+)
+
+gemini = GeminiEngine()
+
+print(
+    "Inicializando ImageEngine..."
+)
+
+imagem_engine = ImageEngine()
+
+
+# ==========================================================
+# ROTAÇÃO DE CATEGORIA
+# ==========================================================
+
+categoria = random.choice(
+    CATEGORIAS_EDITORIAIS
+)
+
+print(
+    f"Categoria selecionada: "
+    f"{categoria}"
+)
+
+
+# ==========================================================
+# GERAÇÃO DE TEMA
+# ==========================================================
+
+print()
+print(
+    "Gerando tema..."
+)
+
+titulo = None
+
+for tentativa_numero in range(5):
 
     print(
-        f"Tema escolhido: {tema}"
+        f"Tentativa "
+        f"{tentativa_numero + 1}/5"
     )
 
-    # ========================================================
-    # ARTIGO
-    # ========================================================
-
-    print()
-    print("Gerando artigo...")
-
-    try:
-
-        artigo = gerar_artigo(
-            tema,
-            categoria
-        )
-
-    except NameError:
-
-        print(
-            "ERRO: a função gerar_artigo() "
-            "não está definida neste arquivo."
-        )
-
-        raise
-
-    if not artigo:
-
-        print(
-            "Não foi possível gerar o artigo."
-        )
-
-        raise SystemExit
-
-    # ========================================================
-    # IMAGEM
-    # ========================================================
-
-    print()
-    print("Gerando imagem...")
-
-    try:
-
-        imagem = gerar_imagem(
-            tema
-        )
-
-    except NameError:
-
-        print(
-            "ERRO: a função gerar_imagem() "
-            "não está definida neste arquivo."
-        )
-
-        raise
-
-    # ========================================================
-    # TAGS
-    # ========================================================
-
-    tags = gerar_tags_seo(
-        tema,
-        artigo,
+    tentativa = gemini.gerar_tema(
         categoria
     )
 
-    print()
+    if not tentativa:
+        continue
+
+    tentativa = tentativa.strip()
+
+    if not tema_usado_recentemente(
+        tentativa
+    ):
+
+        titulo = tentativa
+
+        break
+
     print(
-        "Tags SEO:"
+        "Tema já utilizado recentemente."
+    )
+
+
+if not titulo:
+
+    print(
+        "Nenhum tema novo encontrado."
     )
 
     print(
-        ", ".join(tags)
+        "Postagem abortada para evitar repetição."
     )
 
-    # ========================================================
-    # HTML
-    # ========================================================
+    raise SystemExit
 
-    print()
-    print("Montando HTML...")
 
-    try:
+print()
+print(
+    f"Tema escolhido: "
+    f"{titulo}"
+)
 
-        html = montar_html(
-            titulo=tema,
-            artigo=artigo,
-            imagem=imagem,
-            categoria=categoria,
-            tags=tags,
-            bloco_final=BLOCO_FIXO_FINAL
-        )
 
-    except NameError:
+# ==========================================================
+# GERAÇÃO DO ARTIGO
+# ==========================================================
 
-        print(
-            "ERRO: a função montar_html() "
-            "não está definida neste arquivo."
-        )
+print()
+print(
+    "Gerando artigo..."
+)
 
-        raise
+texto = gemini.gerar_artigo(
+    titulo,
+    categoria
+)
 
-    # ========================================================
-    # BLOGGER
-    # ========================================================
-
-    print()
-    print(
-        "Conectando ao Blogger..."
-    )
-
-    service = obter_servico_blogger()
+if not texto:
 
     print(
-        "Publicando artigo..."
+        "O Gemini não retornou conteúdo."
     )
 
-    postagem = {
+    raise SystemExit
 
-        "kind": "blogger#post",
 
-        "title": tema,
+# ==========================================================
+# GERAÇÃO DA IMAGEM
+# ==========================================================
 
+print()
+print(
+    "Gerando imagem..."
+)
+
+imagem = imagem_engine.obter_imagem(
+    titulo
+)
+
+
+# ==========================================================
+# GERAÇÃO DO HTML
+# ==========================================================
+
+print()
+print(
+    "Montando HTML..."
+)
+
+html = obter_esqueleto_html({
+    "titulo": titulo,
+    "imagem": imagem,
+    "texto_completo": texto,
+    "assinatura": BLOCO_FIXO_FINAL
+})
+
+
+# ==========================================================
+# TAGS SEO
+# ==========================================================
+
+labels = gerar_tags_seo(
+    titulo,
+    texto
+)
+
+print()
+print(
+    f"Tags SEO: {labels}"
+)
+
+
+# ==========================================================
+# CONEXÃO COM BLOGGER
+# ==========================================================
+
+print()
+print(
+    "Conectando ao Blogger..."
+)
+
+service = obter_servico_blogger()
+
+
+# ==========================================================
+# PUBLICAÇÃO
+# ==========================================================
+
+print()
+
+if FORCAR_POSTAGEM:
+
+    print(
+        "PUBLICAÇÃO FORÇADA REAL"
+    )
+
+else:
+
+    print(
+        "PUBLICAÇÃO NORMAL"
+    )
+
+
+print(
+    "Enviando postagem para o Blogger..."
+)
+
+service.posts().insert(
+    blogId=BLOG_ID,
+    body={
+        "title": titulo,
         "content": html,
+        "labels": labels
+    },
+    isDraft=False
+).execute()
 
-        "labels": tags
-    }
 
-    resultado = service.posts().insert(
+# ==========================================================
+# REGISTROS
+# ==========================================================
 
-        blogId=BLOG_ID,
+registrar_postagem(
+    data_hoje,
+    horario_escolhido
+)
 
-        body=postagem,
+registrar_tema(
+    titulo
+)
 
-        isDraft=False
 
-    ).execute()
+# ==========================================================
+# FINALIZAÇÃO
+# ==========================================================
 
-    # ========================================================
-    # RESULTADO
-    # ========================================================
+print()
+print(
+    "============================================================"
+)
 
-    print()
-    print("=" * 60)
-    print("PUBLICAÇÃO CONCLUÍDA")
-    print("=" * 60)
+print(
+    "POST PUBLICADO COM SUCESSO"
+)
 
-    print(
-        f"Título: {tema}"
-    )
+print(
+    "============================================================"
+)
 
-    print(
-        f"Categoria: {categoria}"
-    )
+print(
+    f"Título: {titulo}"
+)
 
-    print(
-        f"Modo: "
-        f"{'TESTE/FORÇADO' if FORCAR_POSTAGEM == 'true' else 'NORMAL'}"
-    )
+print(
+    f"Categoria: {categoria}"
+)
 
-    print(
-        f"Horário registrado: "
-        f"{horario_escolhido}"
-    )
+print(
+    f"Horário registrado: "
+    f"{horario_escolhido}"
+)
 
-    print(
-        f"ID da postagem: "
-        f"{resultado.get('id')}"
-    )
+print(
+    f"Tags: {labels}"
+)
 
-    print(
-        f"URL: "
-        f"{resultado.get('url')}"
-    )
-
-    # ========================================================
-    # REGISTRO
-    # ========================================================
-
-    # No modo normal:
-    # registra o horário REAL da agenda.
-    #
-    # No modo teste:
-    # registra TESTE-HH:MM e NÃO consome 15:00.
-
-    registrar_postagem(
-        data_hoje,
-        horario_escolhido
-    )
-
-    registrar_tema(
-        tema
-    )
-
-    print()
-    print(
-        "Controles atualizados."
-    )
-
-    print("=" * 60)
+print(
+    "============================================================"
+)
